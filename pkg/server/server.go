@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"strings"
@@ -96,6 +98,9 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "missing or invalid Authorization header")
 		return
 	}
+
+	h := sha256.Sum256([]byte(rawToken))
+	s.logger.InfoContext(r.Context(), "request", "hashed_token", base64.StdEncoding.EncodeToString(h[:]))
 
 	if err := s.oidcVerifier.Verify(r.Context(), rawToken); err != nil {
 		s.logger.WarnContext(r.Context(), "oidc verification failed", "error", err)
