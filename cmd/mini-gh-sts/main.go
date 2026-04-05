@@ -14,6 +14,7 @@ import (
 
 	"github.com/yagihash/mini-gh-sts/internal/config"
 	"github.com/yagihash/mini-gh-sts/pkg/logger"
+	minioidc "github.com/yagihash/mini-gh-sts/pkg/oidc"
 	"github.com/yagihash/mini-gh-sts/pkg/server"
 )
 
@@ -31,8 +32,14 @@ func realMain() int {
 	log := logger.New(cfg.Debug)
 	ctx := context.Background()
 
+	ov, err := minioidc.New(ctx, "https://"+cfg.Hostname)
+	if err != nil {
+		log.ErrorContext(ctx, "failed to initialize OIDC verifier", "error", err)
+		return 1
+	}
+
 	addr := net.JoinHostPort("", strconv.Itoa(cfg.Port))
-	srv := server.New(addr, log)
+	srv := server.New(addr, log, ov)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)

@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/yagihash/mini-gh-sts/pkg/logger"
@@ -12,13 +14,18 @@ const (
 	maxRequestBodyBytes = 1 * 1024 * 1024 // 1 MiB
 )
 
-type Server struct {
-	logger     logger.Logger
-	httpServer *http.Server
+type oidcVerifier interface {
+	Verify(ctx context.Context, rawToken string) error
 }
 
-func New(addr string, log logger.Logger) *Server {
-	s := &Server{logger: log}
+type Server struct {
+	logger       logger.Logger
+	oidcVerifier oidcVerifier
+	httpServer   *http.Server
+}
+
+func New(addr string, log logger.Logger, ov oidcVerifier) *Server {
+	s := &Server{logger: log, oidcVerifier: ov}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
@@ -78,13 +85,31 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Content-Type") != "application/json" {
-		http.Error(w, `{"error":"Content-Type must be application/json"}`, http.StatusUnsupportedMediaType)
+		writeError(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json")
 		return
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 
+	rawToken, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !ok || rawToken == "" {
+		writeError(w, http.StatusBadRequest, "missing or invalid Authorization header")
+		return
+	}
+
+	if err := s.oidcVerifier.Verify(r.Context(), rawToken); err != nil {
+		s.logger.WarnContext(r.Context(), "oidc verification failed", "error", err)
+		writeError(w, http.StatusBadRequest, "invalid token")
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("{}"))
+}
+
+func writeError(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	fmt.Fprintf(w, `{"error":%q}`, msg)
 }
