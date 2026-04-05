@@ -1,6 +1,6 @@
-const core = require("@actions/core");
-const { HttpClient } = require("@actions/http-client");
-const { BearerCredentialHandler } = require("@actions/http-client/lib/auth");
+import * as core from "@actions/core";
+import { HttpClient } from "@actions/http-client";
+import { BearerCredentialHandler } from "@actions/http-client/lib/auth";
 
 async function run() {
   const stsUrl = core.getInput("sts_url", { required: true });
