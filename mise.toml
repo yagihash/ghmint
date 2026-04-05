@@ -2,9 +2,10 @@
 go = "1.26.1"
 
 [tasks.build]
-description = "Build both binaries to dist/"
+description = "Build all artifacts"
 run = [
   "go build -ldflags='-s -w' -trimpath -o dist/mini-gh-sts ./cmd/mini-gh-sts/main.go",
+  "pnpm --dir .github/actions/token run build",
 ]
 
 [tasks.test]
