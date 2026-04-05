@@ -1,0 +1,16 @@
+name: Request mini-gh-sts token
+description: GitHub Actions OIDC token を使って mini-gh-sts から GitHub App token を取得する
+
+inputs:
+  sts_url:
+    description: mini-gh-sts のエンドポイント URL
+    required: false
+    default: https://mini-gh-sts.ssrf.dev
+
+outputs:
+  token:
+    description: 取得した GitHub App token
+
+runs:
+  using: node20
+  main: index.js
