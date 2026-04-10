@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	minioidc "github.com/yagihash/mini-gh-sts/pkg/oidc"
 	"github.com/yagihash/mini-gh-sts/pkg/logger"
 )
 
@@ -17,11 +18,11 @@ const (
 )
 
 type oidcVerifier interface {
-	Verify(ctx context.Context, rawToken string) error
+	Verify(ctx context.Context, rawToken string) (minioidc.Claims, error)
 }
 
 type tokenIssuer interface {
-	Issue(ctx context.Context) (string, error)
+	Issue(ctx context.Context, owner string) (string, error)
 }
 
 type Server struct {
@@ -107,13 +108,14 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 	h := sha256.Sum256([]byte(rawToken))
 	s.logger.InfoContext(r.Context(), "request", "hashed_token", base64.StdEncoding.EncodeToString(h[:]))
 
-	if err := s.oidcVerifier.Verify(r.Context(), rawToken); err != nil {
+	claims, err := s.oidcVerifier.Verify(r.Context(), rawToken)
+	if err != nil {
 		s.logger.WarnContext(r.Context(), "oidc verification failed", "error", err)
 		writeError(w, http.StatusBadRequest, "invalid token")
 		return
 	}
 
-	appToken, err := s.tokenIssuer.Issue(r.Context())
+	appToken, err := s.tokenIssuer.Issue(r.Context(), claims.RepositoryOwner)
 	if err != nil {
 		s.logger.ErrorContext(r.Context(), "failed to issue github app token", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to issue token")

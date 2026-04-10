@@ -37,6 +37,7 @@ type preVerifyClaims struct {
 
 // postVerifyClaims holds claims extracted from the verified token.
 type postVerifyClaims struct {
+	Repository      string `json:"repository"`
 	RepositoryOwner string `json:"repository_owner"`
 }
 
@@ -85,38 +86,44 @@ func (v *Verifier) provider(ctx context.Context, issuer string) (*coreidoidc.Pro
 	return p, nil
 }
 
-func (v *Verifier) Verify(ctx context.Context, rawToken string) error {
+// Claims holds the verified token claims returned by Verify.
+type Claims struct {
+	Repository      string
+	RepositoryOwner string
+}
+
+func (v *Verifier) Verify(ctx context.Context, rawToken string) (Claims, error) {
 	header, pre, err := parseUnsafe(rawToken)
 	if err != nil {
-		return err
+		return Claims{}, err
 	}
 
 	if strings.EqualFold(header.Alg, "none") {
-		return errors.New("jwt alg must not be none")
+		return Claims{}, errors.New("jwt alg must not be none")
 	}
 
 	p, err := v.provider(ctx, pre.Iss)
 	if err != nil {
-		return err
+		return Claims{}, err
 	}
 
 	idToken, err := p.Verifier(&coreidoidc.Config{ClientID: v.audience}).Verify(ctx, rawToken)
 	if err != nil {
-		return err
+		return Claims{}, err
 	}
 
 	// TODO: 開発中の暫定チェック。ポリシー評価が実装されたら削除する。
 	if idToken.Issuer != "https://token.actions.githubusercontent.com" {
-		return fmt.Errorf("issuer %q is not allowed", idToken.Issuer)
+		return Claims{}, fmt.Errorf("issuer %q is not allowed", idToken.Issuer)
 	}
 
 	var post postVerifyClaims
 	if err := idToken.Claims(&post); err != nil {
-		return fmt.Errorf("failed to parse verified claims: %w", err)
+		return Claims{}, fmt.Errorf("failed to parse verified claims: %w", err)
 	}
 	if post.RepositoryOwner != "yagihash" {
-		return fmt.Errorf("repository_owner %q is not allowed", post.RepositoryOwner)
+		return Claims{}, fmt.Errorf("repository_owner %q is not allowed", post.RepositoryOwner)
 	}
 
-	return nil
+	return Claims{Repository: post.Repository, RepositoryOwner: post.RepositoryOwner}, nil
 }

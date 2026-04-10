@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -18,12 +19,11 @@ import (
 )
 
 type TokenIssuer struct {
-	appID          string
-	installationID int64
-	privateKey     *rsa.PrivateKey
+	appID      string
+	privateKey *rsa.PrivateKey
 }
 
-func New(appID string, installationID int64, privateKeyPath string) (*TokenIssuer, error) {
+func New(appID string, privateKeyPath string) (*TokenIssuer, error) {
 	data, err := os.ReadFile(privateKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("read private key: %w", err)
@@ -40,19 +40,23 @@ func New(appID string, installationID int64, privateKeyPath string) (*TokenIssue
 	}
 
 	return &TokenIssuer{
-		appID:          appID,
-		installationID: installationID,
-		privateKey:     key,
+		appID:      appID,
+		privateKey: key,
 	}, nil
 }
 
-func (t *TokenIssuer) Issue(ctx context.Context) (string, error) {
+func (t *TokenIssuer) Issue(ctx context.Context, owner string) (string, error) {
 	jwt, err := t.signJWT()
 	if err != nil {
 		return "", fmt.Errorf("sign jwt: %w", err)
 	}
 
-	return t.requestInstallationToken(ctx, jwt)
+	installationID, err := t.getInstallationID(ctx, jwt, owner)
+	if err != nil {
+		return "", fmt.Errorf("get installation id: %w", err)
+	}
+
+	return t.requestInstallationToken(ctx, jwt, installationID)
 }
 
 func (t *TokenIssuer) signJWT() (string, error) {
@@ -78,8 +82,40 @@ func (t *TokenIssuer) signJWT() (string, error) {
 	return signingInput + "." + base64.RawURLEncoding.EncodeToString(sig), nil
 }
 
-func (t *TokenIssuer) requestInstallationToken(ctx context.Context, jwt string) (string, error) {
-	url := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", t.installationID)
+func (t *TokenIssuer) getInstallationID(ctx context.Context, jwt, owner string) (int64, error) {
+	url := fmt.Sprintf("https://api.github.com/users/%s/installation", owner)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("github api request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return 0, fmt.Errorf("github api returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, fmt.Errorf("decode response: %w", err)
+	}
+
+	return result.ID, nil
+}
+
+func (t *TokenIssuer) requestInstallationToken(ctx context.Context, jwt string, installationID int64) (string, error) {
+	url := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", installationID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader("{}"))
 	if err != nil {

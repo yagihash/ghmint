@@ -35,7 +35,7 @@ func realMain() int {
 
 	ov := minioidc.New("https://" + cfg.Hostname)
 
-	ti, err := githubapp.New(cfg.AppID, cfg.InstallationID, cfg.PrivateKeyPath)
+	ti, err := githubapp.New(cfg.AppID, cfg.PrivateKeyPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize github app token issuer: %v\n", err)
 		return 1

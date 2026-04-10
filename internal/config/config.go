@@ -7,7 +7,6 @@ type Config struct {
 	Debug          bool   `envconfig:"DEBUG" default:"false"`
 	Hostname       string `envconfig:"HOSTNAME" required:"true"`
 	AppID          string `envconfig:"APP_ID" required:"true"`
-	InstallationID int64  `envconfig:"INSTALLATION_ID" required:"true"`
 	PrivateKeyPath string `envconfig:"PRIVATE_KEY_PATH" required:"true"`
 }
 
