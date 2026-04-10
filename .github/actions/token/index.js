@@ -4,6 +4,7 @@ import { BearerCredentialHandler } from "@actions/http-client/lib/auth";
 
 async function run() {
   const stsUrl = core.getInput("sts_url", { required: true });
+  const scope = core.getInput("scope") || process.env.GITHUB_REPOSITORY_OWNER || "";
 
   core.info(`Requesting OIDC token for audience: ${stsUrl}`);
   const idToken = await core.getIDToken(stsUrl);
@@ -12,7 +13,7 @@ async function run() {
     new BearerCredentialHandler(idToken),
   ]);
 
-  const res = await client.postJson(`${stsUrl}/token`, {});
+  const res = await client.postJson(`${stsUrl}/token`, { scope });
   if (res.statusCode !== 200) {
     throw new Error(
       `STS returned ${res.statusCode}: ${JSON.stringify(res.result)}`

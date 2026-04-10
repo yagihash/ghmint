@@ -19906,12 +19906,13 @@ function getIDToken(aud) {
 // index.js
 async function run() {
   const stsUrl = getInput("sts_url", { required: true });
+  const scope = getInput("scope") || process.env.GITHUB_REPOSITORY_OWNER || "";
   info(`Requesting OIDC token for audience: ${stsUrl}`);
   const idToken = await getIDToken(stsUrl);
   const client = new HttpClient("mini-gh-sts-action", [
     new BearerCredentialHandler(idToken)
   ]);
-  const res = await client.postJson(`${stsUrl}/token`, {});
+  const res = await client.postJson(`${stsUrl}/token`, { scope });
   if (res.statusCode !== 200) {
     throw new Error(
       `STS returned ${res.statusCode}: ${JSON.stringify(res.result)}`
