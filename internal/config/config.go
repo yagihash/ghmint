@@ -7,7 +7,7 @@ type Config struct {
 	Debug          bool   `envconfig:"DEBUG" default:"false"`
 	Hostname       string `envconfig:"HOSTNAME" required:"true"`
 	AppID          string `envconfig:"APP_ID" required:"true"`
-	PrivateKeyPath string `envconfig:"PRIVATE_KEY_PATH" default:""`
+	PrivateKeyPath string `envconfig:"PRIVATE_KEY_PATH" required:"true"`
 }
 
 func Load() (*Config, error) {

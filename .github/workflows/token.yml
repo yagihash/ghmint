@@ -20,7 +20,8 @@ jobs:
         id: sts
         uses: ./.github/actions/token
 
-      - name: Use token
+      - name: Verify token
         env:
-          TOKEN: ${{ steps.sts.outputs.token }}
-        run: echo "Got token (length=${#TOKEN})"
+          GH_TOKEN: ${{ steps.sts.outputs.token }}
+        run: |
+          gh auth status

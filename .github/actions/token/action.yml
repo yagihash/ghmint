@@ -6,6 +6,10 @@ inputs:
     description: mini-gh-sts のエンドポイント URL
     required: false
     default: https://mini-gh-sts.ssrf.dev
+  scope:
+    description: トークンのスコープ（<org> または <org>/<repo> 形式）
+    required: false
+    default: ""
 
 outputs:
   token:

@@ -2,12 +2,16 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/yagihash/mini-gh-sts/pkg/logger"
+	minioidc "github.com/yagihash/mini-gh-sts/pkg/oidc"
 )
 
 const (
@@ -15,17 +19,22 @@ const (
 )
 
 type oidcVerifier interface {
-	Verify(ctx context.Context, rawToken string) error
+	Verify(ctx context.Context, rawToken string) (minioidc.Claims, error)
+}
+
+type tokenIssuer interface {
+	Issue(ctx context.Context, owner string) (string, error)
 }
 
 type Server struct {
 	logger       logger.Logger
 	oidcVerifier oidcVerifier
+	tokenIssuer  tokenIssuer
 	httpServer   *http.Server
 }
 
-func New(addr string, log logger.Logger, ov oidcVerifier) *Server {
-	s := &Server{logger: log, oidcVerifier: ov}
+func New(addr string, log logger.Logger, ov oidcVerifier, ti tokenIssuer) *Server {
+	s := &Server{logger: log, oidcVerifier: ov, tokenIssuer: ti}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
@@ -83,6 +92,11 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("{}"))
 }
 
+type tokenRequest struct {
+	Scope  string `json:"scope"`
+	Policy string `json:"policy"`
+}
+
 func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Content-Type") != "application/json" {
 		writeError(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json")
@@ -97,15 +111,38 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.oidcVerifier.Verify(r.Context(), rawToken); err != nil {
+	var req tokenRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Scope == "" {
+		writeError(w, http.StatusBadRequest, "scope is required")
+		return
+	}
+
+	// scope は <org> または <org>/<repo> 形式 — org 部分を取り出す
+	org, _, _ := strings.Cut(req.Scope, "/")
+
+	h := sha256.Sum256([]byte(rawToken))
+	s.logger.InfoContext(r.Context(), "request", "hashed_token", base64.StdEncoding.EncodeToString(h[:]))
+
+	if _, err := s.oidcVerifier.Verify(r.Context(), rawToken); err != nil {
 		s.logger.WarnContext(r.Context(), "oidc verification failed", "error", err)
 		writeError(w, http.StatusBadRequest, "invalid token")
 		return
 	}
 
+	appToken, err := s.tokenIssuer.Issue(r.Context(), org)
+	if err != nil {
+		s.logger.ErrorContext(r.Context(), "failed to issue github app token", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to issue token")
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("{}"))
+	fmt.Fprintf(w, `{"token":%q}`, appToken)
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {
