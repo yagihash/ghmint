@@ -20,14 +20,19 @@ type oidcVerifier interface {
 	Verify(ctx context.Context, rawToken string) error
 }
 
+type tokenIssuer interface {
+	Issue(ctx context.Context) (string, error)
+}
+
 type Server struct {
 	logger       logger.Logger
 	oidcVerifier oidcVerifier
+	tokenIssuer  tokenIssuer
 	httpServer   *http.Server
 }
 
-func New(addr string, log logger.Logger, ov oidcVerifier) *Server {
-	s := &Server{logger: log, oidcVerifier: ov}
+func New(addr string, log logger.Logger, ov oidcVerifier, ti tokenIssuer) *Server {
+	s := &Server{logger: log, oidcVerifier: ov, tokenIssuer: ti}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
@@ -108,9 +113,16 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	appToken, err := s.tokenIssuer.Issue(r.Context())
+	if err != nil {
+		s.logger.ErrorContext(r.Context(), "failed to issue github app token", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to issue token")
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("{}"))
+	fmt.Fprintf(w, `{"token":%q}`, appToken)
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {

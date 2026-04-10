@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/yagihash/mini-gh-sts/internal/config"
+	"github.com/yagihash/mini-gh-sts/pkg/githubapp"
 	"github.com/yagihash/mini-gh-sts/pkg/logger"
 	minioidc "github.com/yagihash/mini-gh-sts/pkg/oidc"
 	"github.com/yagihash/mini-gh-sts/pkg/server"
@@ -34,8 +35,14 @@ func realMain() int {
 
 	ov := minioidc.New("https://" + cfg.Hostname)
 
+	ti, err := githubapp.New(cfg.AppID, cfg.InstallationID, cfg.PrivateKeyPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to initialize github app token issuer: %v\n", err)
+		return 1
+	}
+
 	addr := net.JoinHostPort("", strconv.Itoa(cfg.Port))
-	srv := server.New(addr, log, ov)
+	srv := server.New(addr, log, ov, ti)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
