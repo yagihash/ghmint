@@ -18,6 +18,7 @@ import (
 	minioidc "github.com/yagihash/mini-gh-sts/pkg/oidc"
 	"github.com/yagihash/mini-gh-sts/pkg/policystore"
 	"github.com/yagihash/mini-gh-sts/pkg/server"
+	"github.com/yagihash/mini-gh-sts/pkg/signer"
 	"github.com/yagihash/mini-gh-sts/pkg/verifier"
 )
 
@@ -43,7 +44,14 @@ func realMain() int {
 		return 1
 	}
 
-	ps := policystore.NewRepoPolicyStore(ti)
+	rs, err := signer.NewRSASignerFromFile(cfg.PrivateKeyPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to initialize rsa signer: %v\n", err)
+		return 1
+	}
+
+	ac := githubapp.NewAppClient(cfg.AppID, rs)
+	ps := policystore.NewRepoPolicyStore(ac)
 	pv := verifier.New(ps)
 
 	addr := net.JoinHostPort("", strconv.Itoa(cfg.Port))
