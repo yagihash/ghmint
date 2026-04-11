@@ -31,8 +31,8 @@ OIDC ID Token の検証（署名・`aud`・`exp`・`iat`）はフレームワー
 | `internal/signer` | ローカル RSA 秘密鍵を使った `Signer` 実装（開発用） |
 | `pkg/oidc` | OIDC JWT 検証（署名・`aud`・`exp`・`iat`）、コア・差し替え不可 |
 | `pkg/verifier` | 検証済み Claims をポリシーに照らして発行可否・権限・リポジトリを決定 |
-| `pkg/policystore` | `PolicyStore` インターフェース定義 + GitHub リポジトリからの Rego ファイル取得実装 |
-| `pkg/githubapp` | GitHub App Installation Access Token の発行（`GitHubApp` 型） |
+| `pkg/policystore` | `PolicyStore` インターフェース定義 + GitHub リポジトリからの Rego ファイル取得実装（GitHub クライアントは内部に閉じ込める） |
+| `pkg/githubapp` | GitHub App Installation Access Token の発行のみ。`Signer` インターフェースで JWT 署名（KMS 対応）。 |
 | `pkg/app` | HTTP ハンドラ・OIDC 検証・各コンポーネントの組み合わせ。サービス全体を束ねる `App` 型 |
 
 ## 依存関係
@@ -45,7 +45,7 @@ App
   └─ pkg/githubapp  （GitHub App Installation Access Token 発行）
 ```
 
-`pkg/policystore` の `RepoPolicyStore` 実装は GitHub Contents API を使うが、そのクライアント（JWT 署名を含む）は `RepoPolicyStore` の内部に閉じ込める。`pkg/githubapp` はトークン発行のみを担い、policystore 用クライアントとは独立している。
+`pkg/policystore` の `RepoPolicyStore` 実装は GitHub Contents API を使うが、そのクライアント（JWT 署名を含む）は `pkg/policystore` の内部に閉じ込める（unexported 型）。`pkg/githubapp` はトークン発行のみを担い、policystore 用クライアントとは独立している。両者はそれぞれ独自に GitHub App 認証を行う。
 
 ## App API
 
@@ -55,6 +55,67 @@ app.Serve(addr)
 ```
 
 `App` は「mini-gh-sts サービス」そのものを表す型であり、HTTP サーバーに留まらずサービスを構成するコンポーネント全体を束ねる。
+
+## HTTP API
+
+### エンドポイント
+
+| メソッド | パス | 説明 |
+|---|---|---|
+| `GET` | `/healthz` | ヘルスチェック |
+| `POST` | `/token` | GitHub App Installation Access Token の発行 |
+
+### POST /token
+
+**リクエスト**
+
+```
+Authorization: Bearer <oidc-token>
+Content-Type: application/json
+
+{
+  "scope": "<org> または <org>/<repo>",  // 必須
+  "policy": "<ポリシー名>"               // 必須
+}
+```
+
+**レスポンス（200 OK）**
+
+```json
+{
+  "token": "ghs_...",
+  "expires_at": "2026-04-11T15:00:00Z",
+  "permissions": {"contents": "read"},
+  "repositories": ["yagihash/app"]   // org/repo フルパス形式
+}
+```
+
+**エラーレスポンス**
+
+```json
+{"error": "<メッセージ>", "code": "<機械可読コード>"}
+```
+
+**ステータスコードと `code` 値**
+
+| HTTP | `code` | 状況 |
+|---|---|---|
+| 400 | `BAD_REQUEST` | リクエストボディが不正 |
+| 400 | `MISSING_SCOPE` | `scope` が空 |
+| 400 | `MISSING_POLICY` | `policy` が空 |
+| 401 | `INVALID_TOKEN` | OIDC トークン無効/期限切れ |
+| 403 | `FORBIDDEN` | 発行不可（後述の fail-closed 方針を参照） |
+| 415 | `UNSUPPORTED_MEDIA_TYPE` | Content-Type が application/json でない |
+| 500 | `INTERNAL_ERROR` | 内部エラー |
+
+#### fail-closed 方針
+
+403 はポリシーが deny した場合だけでなく、ポリシーが存在しない・Rego 構文エラー・必須ルール欠如・`scope=org/repo` なのに `repositories` が defined など、ポリシー起因のあらゆる失敗に統一して使う。
+任意の OIDC プロバイダーを受け入れる設計上、有効なトークン保持者がポリシーの存在を列挙できてしまう問題への対策。詳細はサーバーログで確認する。
+
+> **議論の余地あり:**
+> - ポリシーが存在しない場合に 404 を返す案（DX 向上、ただしポリシー存在のリークになる）
+> - ポリシーが不正な場合に 500 を返す案（サーバーサイドの設定ミスを明示できる、ただし同様にリークになる）
 
 ## Verifier インターフェース
 
@@ -142,3 +203,9 @@ allow if {
 - `issuer`・`permissions`・`allow` の存在
 - `permissions` のキー・値が GitHub App の有効な権限名であること
 - `scope=org/repo` 向けポリシーで `repositories` が定義されていないこと（静的解析の範囲で）
+
+## デプロイモデル（リファレンス実装）
+
+- **実行環境**: Google Cloud Run
+- **ロギング**: Cloud Logging
+- **秘密鍵管理**: Google Cloud KMS（開発時は RSA ファイル signer も使用、将来 KMS に一本化予定）
