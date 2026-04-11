@@ -13,12 +13,12 @@ import (
 	"time"
 
 	"github.com/yagihash/mini-gh-sts/internal/config"
+	internalsigner "github.com/yagihash/mini-gh-sts/internal/signer"
 	"github.com/yagihash/mini-gh-sts/pkg/githubapp"
 	"github.com/yagihash/mini-gh-sts/pkg/logger"
 	minioidc "github.com/yagihash/mini-gh-sts/pkg/oidc"
 	"github.com/yagihash/mini-gh-sts/pkg/policystore"
 	"github.com/yagihash/mini-gh-sts/pkg/server"
-	"github.com/yagihash/mini-gh-sts/internal/signer"
 	"github.com/yagihash/mini-gh-sts/pkg/verifier"
 )
 
@@ -38,20 +38,14 @@ func realMain() int {
 
 	ov := minioidc.New(cfg.Hostname)
 
-	ti, err := githubapp.New(cfg.AppID, cfg.PrivateKeyPath)
+	rs, err := internalsigner.NewRSASignerFromFile(cfg.PrivateKeyPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to initialize github app token issuer: %v\n", err)
+		fmt.Fprintf(os.Stderr, "failed to initialize signer: %v\n", err)
 		return 1
 	}
 
-	rs, err := signer.NewRSASignerFromFile(cfg.PrivateKeyPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to initialize rsa signer: %v\n", err)
-		return 1
-	}
-
-	ac := githubapp.NewAppClient(cfg.AppID, rs)
-	ps := policystore.NewRepoPolicyStore(ac)
+	ti := githubapp.New(cfg.AppID, rs)
+	ps := policystore.NewRepoPolicyStore(cfg.AppID, rs)
 	pv := verifier.New(ps)
 
 	addr := net.JoinHostPort("", strconv.Itoa(cfg.Port))
