@@ -41,6 +41,9 @@ type postVerifyClaims struct {
 	RepositoryOwner string `json:"repository_owner"`
 }
 
+// rawClaims holds all claims from the verified token as a raw map.
+type rawClaims map[string]interface{}
+
 // parseUnsafe decodes the JWT header and payload without verifying the signature.
 func parseUnsafe(rawToken string) (jwtHeader, preVerifyClaims, error) {
 	parts := strings.Split(rawToken, ".")
@@ -90,6 +93,7 @@ func (v *Verifier) provider(ctx context.Context, issuer string) (*coreidoidc.Pro
 type Claims struct {
 	Repository      string
 	RepositoryOwner string
+	Raw             map[string]interface{}
 }
 
 func (v *Verifier) Verify(ctx context.Context, rawToken string) (Claims, error) {
@@ -112,7 +116,6 @@ func (v *Verifier) Verify(ctx context.Context, rawToken string) (Claims, error) 
 		return Claims{}, err
 	}
 
-	// TODO: 開発中の暫定チェック。ポリシー評価が実装されたら削除する。
 	if idToken.Issuer != "https://token.actions.githubusercontent.com" {
 		return Claims{}, fmt.Errorf("issuer %q is not allowed", idToken.Issuer)
 	}
@@ -121,9 +124,11 @@ func (v *Verifier) Verify(ctx context.Context, rawToken string) (Claims, error) 
 	if err := idToken.Claims(&post); err != nil {
 		return Claims{}, fmt.Errorf("failed to parse verified claims: %w", err)
 	}
-	if post.RepositoryOwner != "yagihash" {
-		return Claims{}, fmt.Errorf("repository_owner %q is not allowed", post.RepositoryOwner)
+
+	var raw rawClaims
+	if err := idToken.Claims(&raw); err != nil {
+		return Claims{}, fmt.Errorf("failed to parse raw claims: %w", err)
 	}
 
-	return Claims{Repository: post.Repository, RepositoryOwner: post.RepositoryOwner}, nil
+	return Claims{Repository: post.Repository, RepositoryOwner: post.RepositoryOwner, Raw: raw}, nil
 }

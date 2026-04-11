@@ -1,5 +1,7 @@
 package verifier
 
+import "context"
+
 type Verifier interface {
-	Verify(scope string, policy string) (ok bool, permissions map[string]string, repositories []string)
+	Verify(ctx context.Context, claims map[string]interface{}, scope, policy string) (ok bool, permissions map[string]string, repositories []string, err error)
 }

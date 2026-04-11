@@ -16,7 +16,9 @@ import (
 	"github.com/yagihash/mini-gh-sts/pkg/githubapp"
 	"github.com/yagihash/mini-gh-sts/pkg/logger"
 	minioidc "github.com/yagihash/mini-gh-sts/pkg/oidc"
+	"github.com/yagihash/mini-gh-sts/pkg/policystore"
 	"github.com/yagihash/mini-gh-sts/pkg/server"
+	"github.com/yagihash/mini-gh-sts/pkg/verifier"
 )
 
 func main() {
@@ -41,8 +43,11 @@ func realMain() int {
 		return 1
 	}
 
+	ps := policystore.NewRepoPolicyStore(ti)
+	pv := verifier.New(ps)
+
 	addr := net.JoinHostPort("", strconv.Itoa(cfg.Port))
-	srv := server.New(addr, log, ov, ti)
+	srv := server.New(addr, log, ov, ti, pv)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
