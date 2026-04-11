@@ -2,12 +2,12 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-  cmd = "go build -o ./tmp/mini-gh-sts ./cmd/mini-gh-sts/"
-  bin = "./tmp/mini-gh-sts"
-  full_bin = "direnv exec . ./tmp/mini-gh-sts"
+  cmd = "mise run build"
+  bin = "./dist/mini-gh-sts"
+  full_bin = "direnv exec . ./dist/mini-gh-sts"
   include_ext = ["go"]
   include_file = [".envrc"]
-  exclude_dir = ["tmp", "dist", "vendor", ".git", ".github"]
+  exclude_dir = ["dist", "vendor", ".git", ".github"]
   kill_delay = "2s"
   rerun_delay = 500
 
