@@ -13,19 +13,19 @@ type CloudLoggingLogger struct {
 }
 
 func (d CloudLoggingLogger) DebugContext(ctx context.Context, msg string, args ...any) {
-	d.l.DebugContext(ctx, msg, args...)
+	d.l.DebugContext(ctx, msg, logger.WithRequestIDArgs(ctx, args)...)
 }
 
 func (d CloudLoggingLogger) InfoContext(ctx context.Context, msg string, args ...any) {
-	d.l.InfoContext(ctx, msg, args...)
+	d.l.InfoContext(ctx, msg, logger.WithRequestIDArgs(ctx, args)...)
 }
 
 func (d CloudLoggingLogger) WarnContext(ctx context.Context, msg string, args ...any) {
-	d.l.WarnContext(ctx, msg, args...)
+	d.l.WarnContext(ctx, msg, logger.WithRequestIDArgs(ctx, args)...)
 }
 
 func (d CloudLoggingLogger) ErrorContext(ctx context.Context, msg string, args ...any) {
-	d.l.ErrorContext(ctx, msg, args...)
+	d.l.ErrorContext(ctx, msg, logger.WithRequestIDArgs(ctx, args)...)
 }
 
 func (d CloudLoggingLogger) With(args ...any) logger.Logger {

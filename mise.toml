@@ -1,5 +1,10 @@
 [tools]
 go = "1.26.1"
+"go:github.com/air-verse/air" = "latest"
+
+[tasks.dev]
+description = "Start development server with hot reload"
+run = "air"
 
 [tasks.build]
 description = "Build all artifacts"

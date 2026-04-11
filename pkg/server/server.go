@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -60,13 +62,26 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return s.httpServer.Shutdown(ctx)
 }
 
+func generateRequestID() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
 // logMiddleware logs each request with method, path, status code, and duration.
 func (s *Server) logMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestID := r.Header.Get("X-Request-ID")
+		if requestID == "" {
+			requestID = generateRequestID()
+		}
+		ctx := logger.WithRequestID(r.Context(), requestID)
+		r = r.WithContext(ctx)
+
 		start := time.Now()
 		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rw, r)
-		s.logger.InfoContext(r.Context(), "request",
+		s.logger.InfoContext(ctx, "request",
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", rw.status,
