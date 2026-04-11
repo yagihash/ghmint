@@ -116,10 +116,6 @@ func (v *Verifier) Verify(ctx context.Context, rawToken string) (Claims, error) 
 		return Claims{}, err
 	}
 
-	if idToken.Issuer != "https://token.actions.githubusercontent.com" {
-		return Claims{}, fmt.Errorf("issuer %q is not allowed", idToken.Issuer)
-	}
-
 	var post postVerifyClaims
 	if err := idToken.Claims(&post); err != nil {
 		return Claims{}, fmt.Errorf("failed to parse verified claims: %w", err)
