@@ -18,7 +18,7 @@ import (
 	minioidc "github.com/yagihash/mini-gh-sts/pkg/oidc"
 	"github.com/yagihash/mini-gh-sts/pkg/policystore"
 	"github.com/yagihash/mini-gh-sts/pkg/server"
-	"github.com/yagihash/mini-gh-sts/pkg/signer"
+	"github.com/yagihash/mini-gh-sts/internal/signer"
 	"github.com/yagihash/mini-gh-sts/pkg/verifier"
 )
 
