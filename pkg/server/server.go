@@ -28,15 +28,20 @@ type tokenIssuer interface {
 	Issue(ctx context.Context, owner string) (string, error)
 }
 
-type Server struct {
-	logger       logger.Logger
-	oidcVerifier oidcVerifier
-	tokenIssuer  tokenIssuer
-	httpServer   *http.Server
+type policyVerifier interface {
+	Verify(ctx context.Context, claims map[string]interface{}, scope, policy string) (ok bool, permissions map[string]string, repositories []string, err error)
 }
 
-func New(addr string, log logger.Logger, ov oidcVerifier, ti tokenIssuer) *Server {
-	s := &Server{logger: log, oidcVerifier: ov, tokenIssuer: ti}
+type Server struct {
+	logger         logger.Logger
+	oidcVerifier   oidcVerifier
+	tokenIssuer    tokenIssuer
+	policyVerifier policyVerifier
+	httpServer     *http.Server
+}
+
+func New(addr string, log logger.Logger, ov oidcVerifier, ti tokenIssuer, pv policyVerifier) *Server {
+	s := &Server{logger: log, oidcVerifier: ov, tokenIssuer: ti, policyVerifier: pv}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
@@ -142,9 +147,22 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 	h := sha256.Sum256([]byte(rawToken))
 	s.logger.InfoContext(r.Context(), "request", "hashed_token", base64.StdEncoding.EncodeToString(h[:]))
 
-	if _, err := s.oidcVerifier.Verify(r.Context(), rawToken); err != nil {
+	claims, err := s.oidcVerifier.Verify(r.Context(), rawToken)
+	if err != nil {
 		s.logger.WarnContext(r.Context(), "oidc verification failed", "error", err)
 		writeError(w, http.StatusBadRequest, "invalid token")
+		return
+	}
+
+	allowed, _, _, err := s.policyVerifier.Verify(r.Context(), claims.Raw, req.Scope, req.Policy)
+	if err != nil {
+		s.logger.ErrorContext(r.Context(), "policy evaluation failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "policy evaluation failed")
+		return
+	}
+	if !allowed {
+		s.logger.WarnContext(r.Context(), "policy denied token issuance", "scope", req.Scope, "policy", req.Policy)
+		writeError(w, http.StatusForbidden, "token issuance denied by policy")
 		return
 	}
 

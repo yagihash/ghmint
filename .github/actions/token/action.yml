@@ -2,13 +2,17 @@ name: Request mini-gh-sts token
 description: GitHub Actions OIDC token を使って mini-gh-sts から GitHub App token を取得する
 
 inputs:
-  sts_url:
-    description: mini-gh-sts のエンドポイント URL
+  hostname:
+    description: mini-gh-sts のホスト名
     required: false
-    default: https://mini-gh-sts.ssrf.dev
+    default: mini-gh-sts.ssrf.dev
   scope:
     description: トークンのスコープ（<org> または <org>/<repo> 形式）
-    required: false
+    required: true
+    default: ""
+  policy:
+    description: 使用するポリシー名
+    required: true
     default: ""
 
 outputs:

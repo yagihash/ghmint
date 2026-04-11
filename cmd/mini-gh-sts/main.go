@@ -16,7 +16,10 @@ import (
 	"github.com/yagihash/mini-gh-sts/pkg/githubapp"
 	"github.com/yagihash/mini-gh-sts/pkg/logger"
 	minioidc "github.com/yagihash/mini-gh-sts/pkg/oidc"
+	"github.com/yagihash/mini-gh-sts/pkg/policystore"
 	"github.com/yagihash/mini-gh-sts/pkg/server"
+	"github.com/yagihash/mini-gh-sts/pkg/signer"
+	"github.com/yagihash/mini-gh-sts/pkg/verifier"
 )
 
 func main() {
@@ -33,7 +36,7 @@ func realMain() int {
 	log := logger.New(cfg.Debug)
 	ctx := context.Background()
 
-	ov := minioidc.New("https://" + cfg.Hostname)
+	ov := minioidc.New(cfg.Hostname)
 
 	ti, err := githubapp.New(cfg.AppID, cfg.PrivateKeyPath)
 	if err != nil {
@@ -41,8 +44,18 @@ func realMain() int {
 		return 1
 	}
 
+	rs, err := signer.NewRSASignerFromFile(cfg.PrivateKeyPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to initialize rsa signer: %v\n", err)
+		return 1
+	}
+
+	ac := githubapp.NewAppClient(cfg.AppID, rs)
+	ps := policystore.NewRepoPolicyStore(ac)
+	pv := verifier.New(ps)
+
 	addr := net.JoinHostPort("", strconv.Itoa(cfg.Port))
-	srv := server.New(addr, log, ov, ti)
+	srv := server.New(addr, log, ov, ti, pv)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
