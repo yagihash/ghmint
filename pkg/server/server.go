@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yagihash/mini-gh-sts/pkg/githubapp"
 	"github.com/yagihash/mini-gh-sts/pkg/logger"
 	minioidc "github.com/yagihash/mini-gh-sts/pkg/oidc"
 )
@@ -25,7 +26,12 @@ type oidcVerifier interface {
 }
 
 type tokenIssuer interface {
-	Issue(ctx context.Context, owner string) (string, error)
+	Issue(
+		ctx context.Context,
+		owner string,
+		permissions map[string]string,
+		repositories []string,
+	) (githubapp.IssueResult, error)
 }
 
 type policyVerifier interface {
@@ -119,7 +125,7 @@ type tokenRequest struct {
 
 func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Content-Type") != "application/json" {
-		writeError(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json")
+		writeError(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json", "UNSUPPORTED_MEDIA_TYPE")
 		return
 	}
 
@@ -127,17 +133,21 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 
 	rawToken, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if !ok || rawToken == "" {
-		writeError(w, http.StatusBadRequest, "missing or invalid Authorization header")
+		writeError(w, http.StatusBadRequest, "missing or invalid Authorization header", "BAD_REQUEST")
 		return
 	}
 
 	var req tokenRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
+		writeError(w, http.StatusBadRequest, "invalid request body", "BAD_REQUEST")
 		return
 	}
 	if req.Scope == "" {
-		writeError(w, http.StatusBadRequest, "scope is required")
+		writeError(w, http.StatusBadRequest, "scope is required", "MISSING_SCOPE")
+		return
+	}
+	if req.Policy == "" {
+		writeError(w, http.StatusBadRequest, "policy is required", "MISSING_POLICY")
 		return
 	}
 
@@ -150,36 +160,46 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 	claims, err := s.oidcVerifier.Verify(r.Context(), rawToken)
 	if err != nil {
 		s.logger.WarnContext(r.Context(), "oidc verification failed", "error", err)
-		writeError(w, http.StatusBadRequest, "invalid token")
+		writeError(w, http.StatusUnauthorized, "invalid token", "INVALID_TOKEN")
 		return
 	}
 
-	allowed, _, _, err := s.policyVerifier.Verify(r.Context(), claims.Raw, req.Scope, req.Policy)
+	allowed, permissions, repositories, err := s.policyVerifier.Verify(r.Context(), claims.Raw, req.Scope, req.Policy)
 	if err != nil {
 		s.logger.ErrorContext(r.Context(), "policy evaluation failed", "error", err)
-		writeError(w, http.StatusInternalServerError, "policy evaluation failed")
+		writeError(w, http.StatusInternalServerError, "policy evaluation failed", "INTERNAL_ERROR")
 		return
 	}
 	if !allowed {
 		s.logger.WarnContext(r.Context(), "policy denied token issuance", "scope", req.Scope, "policy", req.Policy)
-		writeError(w, http.StatusForbidden, "token issuance denied by policy")
+		writeError(w, http.StatusForbidden, "token issuance denied by policy", "FORBIDDEN")
 		return
 	}
 
-	appToken, err := s.tokenIssuer.Issue(r.Context(), org)
+	result, err := s.tokenIssuer.Issue(r.Context(), org, permissions, repositories)
 	if err != nil {
 		s.logger.ErrorContext(r.Context(), "failed to issue github app token", "error", err)
-		writeError(w, http.StatusInternalServerError, "failed to issue token")
+		writeError(w, http.StatusInternalServerError, "failed to issue token", "INTERNAL_ERROR")
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{"token":%q}`, appToken)
+	json.NewEncoder(w).Encode(struct {
+		Token        string            `json:"token"`
+		ExpiresAt    string            `json:"expires_at"`
+		Permissions  map[string]string `json:"permissions"`
+		Repositories []string          `json:"repositories"`
+	}{
+		Token:        result.Token,
+		ExpiresAt:    result.ExpiresAt.Format(time.RFC3339),
+		Permissions:  result.Permissions,
+		Repositories: result.Repositories,
+	})
 }
 
-func writeError(w http.ResponseWriter, status int, msg string) {
+func writeError(w http.ResponseWriter, status int, msg, code string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	fmt.Fprintf(w, `{"error":%q}`, msg)
+	fmt.Fprintf(w, `{"error":%q,"code":%q}`, msg, code)
 }

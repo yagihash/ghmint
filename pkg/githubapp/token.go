@@ -1,62 +1,55 @@
 package githubapp
 
 import (
+	"bytes"
 	"context"
-	"crypto"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/sha256"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 )
 
+type jwtSigner interface {
+	SignRS256([]byte) ([]byte, error)
+}
+
 type TokenIssuer struct {
 	appID      string
-	privateKey *rsa.PrivateKey
+	signer     jwtSigner
+	httpClient *http.Client
 }
 
-func New(appID string, privateKeyPath string) (*TokenIssuer, error) {
-	data, err := os.ReadFile(privateKeyPath)
-	if err != nil {
-		return nil, fmt.Errorf("read private key: %w", err)
-	}
+// IssueResult holds the GitHub App Installation Access Token and its metadata.
+type IssueResult struct {
+	Token        string
+	ExpiresAt    time.Time
+	Permissions  map[string]string
+	Repositories []string // org/repo フルパス形式
+}
 
-	block, _ := pem.Decode(data)
-	if block == nil {
-		return nil, fmt.Errorf("failed to decode PEM block from %s", privateKeyPath)
-	}
-
-	key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-	if err != nil {
-		return nil, fmt.Errorf("parse private key: %w", err)
-	}
-
+func New(appID string, signer jwtSigner) *TokenIssuer {
 	return &TokenIssuer{
 		appID:      appID,
-		privateKey: key,
-	}, nil
+		signer:     signer,
+		httpClient: http.DefaultClient,
+	}
 }
 
-func (t *TokenIssuer) Issue(ctx context.Context, owner string) (string, error) {
+func (t *TokenIssuer) Issue(ctx context.Context, owner string, permissions map[string]string, repositories []string) (IssueResult, error) {
 	jwt, err := t.signJWT()
 	if err != nil {
-		return "", fmt.Errorf("sign jwt: %w", err)
+		return IssueResult{}, fmt.Errorf("sign jwt: %w", err)
 	}
 
 	installationID, err := t.getInstallationID(ctx, jwt, owner)
 	if err != nil {
-		return "", fmt.Errorf("get installation id: %w", err)
+		return IssueResult{}, fmt.Errorf("get installation id: %w", err)
 	}
 
-	return t.requestInstallationToken(ctx, jwt, installationID)
+	return t.requestInstallationToken(ctx, jwt, installationID, permissions, repositories)
 }
 
 func (t *TokenIssuer) signJWT() (string, error) {
@@ -73,8 +66,7 @@ func (t *TokenIssuer) signJWT() (string, error) {
 	payload := base64.RawURLEncoding.EncodeToString(payloadJSON)
 	signingInput := header + "." + payload
 
-	h := sha256.Sum256([]byte(signingInput))
-	sig, err := rsa.SignPKCS1v15(rand.Reader, t.privateKey, crypto.SHA256, h[:])
+	sig, err := t.signer.SignRS256([]byte(signingInput))
 	if err != nil {
 		return "", err
 	}
@@ -93,7 +85,7 @@ func (t *TokenIssuer) getInstallationID(ctx context.Context, jwt, owner string) 
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := t.httpClient.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("github api request: %w", err)
 	}
@@ -114,21 +106,43 @@ func (t *TokenIssuer) getInstallationID(ctx context.Context, jwt, owner string) 
 	return result.ID, nil
 }
 
-func (t *TokenIssuer) requestInstallationToken(ctx context.Context, jwt string, installationID int64) (string, error) {
+func (t *TokenIssuer) requestInstallationToken(ctx context.Context, jwt string, installationID int64, permissions map[string]string, repositories []string) (IssueResult, error) {
+	// org/repo フルパス形式 → repo 名のみに変換
+	repoNames := make([]string, 0, len(repositories))
+	for _, r := range repositories {
+		_, name, found := strings.Cut(r, "/")
+		if found {
+			repoNames = append(repoNames, name)
+		}
+	}
+
+	reqBody := struct {
+		Permissions  map[string]string `json:"permissions,omitempty"`
+		Repositories []string          `json:"repositories,omitempty"`
+	}{
+		Permissions:  permissions,
+		Repositories: repoNames,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return IssueResult{}, fmt.Errorf("marshal request body: %w", err)
+	}
+
 	url := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", installationID)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader("{}"))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return "", err
+		return IssueResult{}, err
 	}
 	req.Header.Set("Authorization", "Bearer "+jwt)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := t.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("github api request: %w", err)
+		return IssueResult{}, fmt.Errorf("github api request: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -137,18 +151,30 @@ func (t *TokenIssuer) requestInstallationToken(ctx context.Context, jwt string, 
 			Message string `json:"message"`
 		}
 		json.NewDecoder(resp.Body).Decode(&errBody)
-		return "", fmt.Errorf("github api returned %d: %s", resp.StatusCode, errBody.Message)
+		return IssueResult{}, fmt.Errorf("github api returned %d: %s", resp.StatusCode, errBody.Message)
 	}
 
 	var result struct {
-		Token string `json:"token"`
+		Token       string            `json:"token"`
+		ExpiresAt   string            `json:"expires_at"`
+		Permissions map[string]string `json:"permissions"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("decode response: %w", err)
+		return IssueResult{}, fmt.Errorf("decode response: %w", err)
 	}
 	if result.Token == "" {
-		return "", fmt.Errorf("empty token in response")
+		return IssueResult{}, fmt.Errorf("empty token in response")
 	}
 
-	return result.Token, nil
+	expiresAt, err := time.Parse(time.RFC3339, result.ExpiresAt)
+	if err != nil {
+		return IssueResult{}, fmt.Errorf("parse expires_at: %w", err)
+	}
+
+	return IssueResult{
+		Token:        result.Token,
+		ExpiresAt:    expiresAt,
+		Permissions:  result.Permissions,
+		Repositories: repositories, // 引数の org/repo フルパス形式をそのまま返す
+	}, nil
 }

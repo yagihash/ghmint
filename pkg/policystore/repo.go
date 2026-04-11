@@ -3,14 +3,21 @@ package policystore
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"regexp"
 	"strings"
 )
 
 var validPolicy = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
-type githubClient interface {
-	GetFileContent(ctx context.Context, repo, path string) ([]byte, error)
+// Option configures RepoPolicyStore.
+type Option func(*RepoPolicyStore)
+
+// WithHTTPClient injects a custom HTTP client, used in tests with httptest.Server.
+func WithHTTPClient(c *http.Client) Option {
+	return func(r *RepoPolicyStore) {
+		r.client.httpClient = c
+	}
 }
 
 // RepoPolicyStore fetches Rego policy files from GitHub repositories via the Contents API,
@@ -22,11 +29,21 @@ type githubClient interface {
 //	scope="owner/repo" → owner/repo repository
 //	scope="owner"      → owner/.github repository
 type RepoPolicyStore struct {
-	client githubClient
+	client *appClient
 }
 
-func NewRepoPolicyStore(client githubClient) *RepoPolicyStore {
-	return &RepoPolicyStore{client: client}
+func NewRepoPolicyStore(appID string, signer jwtSigner, opts ...Option) *RepoPolicyStore {
+	r := &RepoPolicyStore{
+		client: &appClient{
+			appID:      appID,
+			signer:     signer,
+			httpClient: http.DefaultClient,
+		},
+	}
+	for _, opt := range opts {
+		opt(r)
+	}
+	return r
 }
 
 func (r *RepoPolicyStore) Fetch(ctx context.Context, scope, policy string) ([]byte, error) {
