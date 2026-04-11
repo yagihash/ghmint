@@ -80,7 +80,7 @@ func (c *AppClient) installationID(ctx context.Context, jwt, owner string) (int6
 
 func (c *AppClient) installationToken(ctx context.Context, jwt string, installationID int64) (string, error) {
 	url := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", installationID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader("{}"))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(`{"permissions":{"contents":"read"}}`))
 	if err != nil {
 		return "", fmt.Errorf("build request: %w", err)
 	}
