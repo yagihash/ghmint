@@ -48,12 +48,89 @@ func (c *AppClient) jwt() (string, error) {
 	return signingInput + "." + base64.RawURLEncoding.EncodeToString(sig), nil
 }
 
+func (c *AppClient) installationID(ctx context.Context, jwt, owner string) (int64, error) {
+	url := fmt.Sprintf("https://api.github.com/users/%s/installation", owner)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return 0, fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("github api request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return 0, fmt.Errorf("github api returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, fmt.Errorf("decode response: %w", err)
+	}
+	return result.ID, nil
+}
+
+func (c *AppClient) installationToken(ctx context.Context, jwt string, installationID int64) (string, error) {
+	url := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", installationID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(`{"permissions":{"contents":"read"}}`))
+	if err != nil {
+		return "", fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("github api request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("github api returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("decode response: %w", err)
+	}
+	if result.Token == "" {
+		return "", fmt.Errorf("empty token in response")
+	}
+	return result.Token, nil
+}
+
 // GetFileContent fetches the content of a file in a GitHub repository.
 // repo is in "owner/repo" format, path is the file path within the repository.
+// It authenticates as a GitHub App installation to access the repository contents.
 func (c *AppClient) GetFileContent(ctx context.Context, repo, path string) ([]byte, error) {
+	owner, _, _ := strings.Cut(repo, "/")
+
 	jwt, err := c.jwt()
 	if err != nil {
 		return nil, fmt.Errorf("create jwt: %w", err)
+	}
+
+	id, err := c.installationID(ctx, jwt, owner)
+	if err != nil {
+		return nil, fmt.Errorf("get installation id: %w", err)
+	}
+
+	token, err := c.installationToken(ctx, jwt, id)
+	if err != nil {
+		return nil, fmt.Errorf("get installation token: %w", err)
 	}
 
 	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", repo, path)
@@ -61,7 +138,7 @@ func (c *AppClient) GetFileContent(ctx context.Context, repo, path string) ([]by
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+jwt)
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
