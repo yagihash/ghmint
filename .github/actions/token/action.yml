@@ -8,11 +8,11 @@ inputs:
     default: mini-gh-sts.ssrf.dev
   scope:
     description: トークンのスコープ（<org> または <org>/<repo> 形式）
-    required: false
+    required: true
     default: ""
   policy:
     description: 使用するポリシー名
-    required: false
+    required: true
     default: ""
 
 outputs:
