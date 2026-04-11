@@ -56,7 +56,7 @@ func (c *AppClient) installationID(ctx context.Context, jwt, owner string) (int6
 	}
 	req.Header.Set("Authorization", "Bearer "+jwt)
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -86,7 +86,7 @@ func (c *AppClient) installationToken(ctx context.Context, jwt string, installat
 	}
 	req.Header.Set("Authorization", "Bearer "+jwt)
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
@@ -140,7 +140,7 @@ func (c *AppClient) GetFileContent(ctx context.Context, repo, path string) ([]by
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

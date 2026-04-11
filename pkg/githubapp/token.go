@@ -91,7 +91,7 @@ func (t *TokenIssuer) getInstallationID(ctx context.Context, jwt, owner string) 
 	}
 	req.Header.Set("Authorization", "Bearer "+jwt)
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -123,7 +123,7 @@ func (t *TokenIssuer) requestInstallationToken(ctx context.Context, jwt string, 
 	}
 	req.Header.Set("Authorization", "Bearer "+jwt)
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(req)
