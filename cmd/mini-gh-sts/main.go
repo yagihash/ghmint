@@ -36,7 +36,7 @@ func realMain() int {
 	log := logger.New(cfg.Debug)
 	ctx := context.Background()
 
-	ov := minioidc.New("https://" + cfg.Hostname)
+	ov := minioidc.New(cfg.Hostname)
 
 	ti, err := githubapp.New(cfg.AppID, cfg.PrivateKeyPath)
 	if err != nil {

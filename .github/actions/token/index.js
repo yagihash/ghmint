@@ -3,17 +3,18 @@ import { HttpClient } from "@actions/http-client";
 import { BearerCredentialHandler } from "@actions/http-client/lib/auth";
 
 async function run() {
-  const stsUrl = core.getInput("sts_url", { required: true });
+  const hostname = core.getInput("hostname", { required: true });
   const scope = core.getInput("scope") || process.env.GITHUB_REPOSITORY_OWNER || "";
+  const policy = core.getInput("policy") || "";
 
-  core.info(`Requesting OIDC token for audience: ${stsUrl}`);
-  const idToken = await core.getIDToken(stsUrl);
+  core.info(`Requesting OIDC token for audience: ${hostname}`);
+  const idToken = await core.getIDToken(hostname);
 
   const client = new HttpClient("mini-gh-sts-action", [
     new BearerCredentialHandler(idToken),
   ]);
 
-  const res = await client.postJson(`${stsUrl}/token`, { scope });
+  const res = await client.postJson(`https://${hostname}/token`, { scope, policy });
   if (res.statusCode !== 200) {
     throw new Error(
       `STS returned ${res.statusCode}: ${JSON.stringify(res.result)}`
