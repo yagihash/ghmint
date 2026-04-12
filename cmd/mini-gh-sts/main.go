@@ -13,11 +13,9 @@ import (
 	"time"
 
 	"github.com/yagihash/mini-gh-sts/internal/config"
-	"github.com/yagihash/mini-gh-sts/pkg/githubapp"
+	"github.com/yagihash/mini-gh-sts/pkg/app"
 	"github.com/yagihash/mini-gh-sts/pkg/logger"
-	minioidc "github.com/yagihash/mini-gh-sts/pkg/oidc"
 	"github.com/yagihash/mini-gh-sts/pkg/policystore"
-	"github.com/yagihash/mini-gh-sts/pkg/server"
 	"github.com/yagihash/mini-gh-sts/pkg/signer"
 	"github.com/yagihash/mini-gh-sts/pkg/verifier"
 )
@@ -36,20 +34,26 @@ func realMain() int {
 	log := logger.New(cfg.Debug)
 	ctx := context.Background()
 
-	ov := minioidc.New(cfg.Hostname)
-
 	kmsSigner, err := signer.NewKMSSigner(ctx, cfg.KMSKeyName())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize kms signer: %v\n", err)
 		return 1
 	}
 
-	ti := githubapp.New(cfg.AppID, kmsSigner)
 	ps := policystore.NewRepoPolicyStore(cfg.AppID, kmsSigner)
 	pv := verifier.New(ps)
 
-	addr := net.JoinHostPort("", strconv.Itoa(cfg.Port))
-	srv := server.New(addr, log, ov, ti, pv)
+	a, err := app.New(app.Config{
+		AppID:    cfg.AppID,
+		Hostname: cfg.Hostname,
+		Logger:   log,
+		Signer:   kmsSigner,
+		Verifier: pv,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to initialize app: %v\n", err)
+		return 1
+	}
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
@@ -59,13 +63,14 @@ func realMain() int {
 		log.InfoContext(ctx, "received signal, shutting down", "signal", sig.String())
 		shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
-		if err := srv.Shutdown(shutdownCtx); err != nil {
+		if err := a.Shutdown(shutdownCtx); err != nil {
 			log.ErrorContext(ctx, "shutdown error", "error", err)
 		}
 	}()
 
+	addr := net.JoinHostPort("", strconv.Itoa(cfg.Port))
 	log.InfoContext(ctx, "server starting", "addr", addr)
-	if err := srv.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := a.Serve(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.ErrorContext(ctx, "server error", "error", err)
 		return 1
 	}

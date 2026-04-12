@@ -23,9 +23,9 @@ func NewKMSSigner(ctx context.Context, keyName string) (*KMSSigner, error) {
 	return &KMSSigner{client: client, keyName: keyName}, nil
 }
 
-func (s *KMSSigner) SignRS256(data []byte) ([]byte, error) {
+func (s *KMSSigner) SignRS256(ctx context.Context, data []byte) ([]byte, error) {
 	h := sha256.Sum256(data)
-	resp, err := s.client.AsymmetricSign(context.Background(), &kmspb.AsymmetricSignRequest{
+	resp, err := s.client.AsymmetricSign(ctx, &kmspb.AsymmetricSignRequest{
 		Name: s.keyName,
 		Digest: &kmspb.Digest{
 			Digest: &kmspb.Digest_Sha256{

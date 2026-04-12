@@ -12,7 +12,7 @@ import (
 )
 
 type jwtSigner interface {
-	SignRS256([]byte) ([]byte, error)
+	SignRS256(ctx context.Context, data []byte) ([]byte, error)
 }
 
 type appClient struct {
@@ -21,7 +21,7 @@ type appClient struct {
 	httpClient *http.Client
 }
 
-func (c *appClient) jwt() (string, error) {
+func (c *appClient) signJWT(ctx context.Context) (string, error) {
 	now := time.Now()
 
 	headerJSON, _ := json.Marshal(map[string]string{"typ": "JWT", "alg": "RS256"})
@@ -35,7 +35,7 @@ func (c *appClient) jwt() (string, error) {
 	payload := base64.RawURLEncoding.EncodeToString(payloadJSON)
 	signingInput := header + "." + payload
 
-	sig, err := c.signer.SignRS256([]byte(signingInput))
+	sig, err := c.signer.SignRS256(ctx, []byte(signingInput))
 	if err != nil {
 		return "", fmt.Errorf("sign jwt: %w", err)
 	}
@@ -114,7 +114,7 @@ func (c *appClient) installationToken(ctx context.Context, jwt string, installat
 func (c *appClient) GetFileContent(ctx context.Context, repo, path string) ([]byte, error) {
 	owner, _, _ := strings.Cut(repo, "/")
 
-	jwt, err := c.jwt()
+	jwt, err := c.signJWT(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("create jwt: %w", err)
 	}
