@@ -13,12 +13,12 @@ import (
 	"time"
 
 	"github.com/yagihash/mini-gh-sts/internal/config"
-	internalsigner "github.com/yagihash/mini-gh-sts/internal/signer"
 	"github.com/yagihash/mini-gh-sts/pkg/githubapp"
 	"github.com/yagihash/mini-gh-sts/pkg/logger"
 	minioidc "github.com/yagihash/mini-gh-sts/pkg/oidc"
 	"github.com/yagihash/mini-gh-sts/pkg/policystore"
 	"github.com/yagihash/mini-gh-sts/pkg/server"
+	"github.com/yagihash/mini-gh-sts/pkg/signer"
 	"github.com/yagihash/mini-gh-sts/pkg/verifier"
 )
 
@@ -38,14 +38,14 @@ func realMain() int {
 
 	ov := minioidc.New(cfg.Hostname)
 
-	rs, err := internalsigner.NewRSASignerFromFile(cfg.PrivateKeyPath)
+	kmsSigner, err := signer.NewKMSSigner(ctx, cfg.KMSKeyName())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to initialize signer: %v\n", err)
+		fmt.Fprintf(os.Stderr, "failed to initialize kms signer: %v\n", err)
 		return 1
 	}
 
-	ti := githubapp.New(cfg.AppID, rs)
-	ps := policystore.NewRepoPolicyStore(cfg.AppID, rs)
+	ti := githubapp.New(cfg.AppID, kmsSigner)
+	ps := policystore.NewRepoPolicyStore(cfg.AppID, kmsSigner)
 	pv := verifier.New(ps)
 
 	addr := net.JoinHostPort("", strconv.Itoa(cfg.Port))
