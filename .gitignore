@@ -1,2 +1,5 @@
 /dist
 /tmp
+.github/actions/token/dist/
+.github/actions/token/node_modules/
+.github/actions/token/pnpm-lock.yaml
