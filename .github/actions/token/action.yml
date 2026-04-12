@@ -1,5 +1,5 @@
 name: Request mini-gh-sts token
-description: GitHub Actions OIDC token を使って mini-gh-sts から GitHub App token を取得する
+description: GitHub Actions OIDC token を使って mini-gh-sts から GitHub App Installation Access Token を取得する
 
 inputs:
   hostname:
@@ -9,16 +9,15 @@ inputs:
   scope:
     description: トークンのスコープ（<org> または <org>/<repo> 形式）
     required: true
-    default: ""
   policy:
     description: 使用するポリシー名
     required: true
-    default: ""
 
 outputs:
   token:
-    description: 取得した GitHub App token
+    description: 取得した GitHub App Installation Access Token
 
 runs:
-  using: node20
-  main: dist/index.js
+  using: node24
+  main: index.js
+  post: post.js
