@@ -16,14 +16,14 @@ type Config struct {
 	KMSLocation  string `envconfig:"KMS_LOCATION" required:"true"`
 	KMSKeyRingID string `envconfig:"KMS_KEYRING_ID" required:"true"`
 	KMSKeyID     string `envconfig:"KMS_KEY_ID" required:"true"`
-	KMSVersion   string `envconfig:"KMS_VERSION" required:"true"`
+	KMSKeyVersion string `envconfig:"KMS_KEY_VERSION" required:"true"`
 }
 
 // KMSKeyName returns the full Cloud KMS crypto key version resource name.
 func (c *Config) KMSKeyName() string {
 	return fmt.Sprintf(
 		"projects/%s/locations/%s/keyRings/%s/cryptoKeys/%s/cryptoKeyVersions/%s",
-		c.KMSProjectID, c.KMSLocation, c.KMSKeyRingID, c.KMSKeyID, c.KMSVersion,
+		c.KMSProjectID, c.KMSLocation, c.KMSKeyRingID, c.KMSKeyID, c.KMSKeyVersion,
 	)
 }
 
