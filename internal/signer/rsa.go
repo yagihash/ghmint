@@ -1,6 +1,7 @@
 package signer
 
 import (
+	"context"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
@@ -38,7 +39,7 @@ func NewRSASignerFromFile(path string) (*RSASigner, error) {
 	return &RSASigner{key: key}, nil
 }
 
-func (s *RSASigner) SignRS256(data []byte) ([]byte, error) {
+func (s *RSASigner) SignRS256(_ context.Context, data []byte) ([]byte, error) {
 	h := sha256.Sum256(data)
 	return rsa.SignPKCS1v15(rand.Reader, s.key, crypto.SHA256, h[:])
 }

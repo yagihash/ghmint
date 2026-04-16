@@ -13,7 +13,7 @@ import (
 )
 
 type jwtSigner interface {
-	SignRS256([]byte) ([]byte, error)
+	SignRS256(ctx context.Context, data []byte) ([]byte, error)
 }
 
 type TokenIssuer struct {
@@ -39,7 +39,7 @@ func New(appID string, signer jwtSigner) *TokenIssuer {
 }
 
 func (t *TokenIssuer) Issue(ctx context.Context, owner string, permissions map[string]string, repositories []string) (IssueResult, error) {
-	jwt, err := t.signJWT()
+	jwt, err := t.signJWT(ctx)
 	if err != nil {
 		return IssueResult{}, fmt.Errorf("sign jwt: %w", err)
 	}
@@ -52,7 +52,7 @@ func (t *TokenIssuer) Issue(ctx context.Context, owner string, permissions map[s
 	return t.requestInstallationToken(ctx, jwt, installationID, permissions, repositories)
 }
 
-func (t *TokenIssuer) signJWT() (string, error) {
+func (t *TokenIssuer) signJWT(ctx context.Context) (string, error) {
 	now := time.Now()
 
 	headerJSON, _ := json.Marshal(map[string]string{"typ": "JWT", "alg": "RS256"})
@@ -66,7 +66,7 @@ func (t *TokenIssuer) signJWT() (string, error) {
 	payload := base64.RawURLEncoding.EncodeToString(payloadJSON)
 	signingInput := header + "." + payload
 
-	sig, err := t.signer.SignRS256([]byte(signingInput))
+	sig, err := t.signer.SignRS256(ctx, []byte(signingInput))
 	if err != nil {
 		return "", err
 	}

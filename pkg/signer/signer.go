@@ -1,5 +1,7 @@
 package signer
 
+import "context"
+
 type Signer interface {
-	SignRS256([]byte) ([]byte, error)
+	SignRS256(ctx context.Context, data []byte) ([]byte, error)
 }
