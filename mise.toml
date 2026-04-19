@@ -7,11 +7,8 @@ description = "Start development server with hot reload"
 run = "air"
 
 [tasks.build]
-description = "Build all artifacts"
-run = [
-  "go build -ldflags='-s -w' -trimpath -o dist/mini-gh-sts ./cmd/mini-gh-sts/main.go",
-  "pnpm --dir .github/actions/token run build",
-]
+description = "Build the binary"
+run = "go build -ldflags='-s -w' -trimpath -o dist/mini-gh-sts ./cmd/mini-gh-sts/main.go"
 
 [tasks.test]
 description = "Run unit tests with coverage and race detection"
