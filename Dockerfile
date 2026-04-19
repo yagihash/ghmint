@@ -10,7 +10,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s" -o /mini-gh-sts ./cmd/mini-gh-sts
 RUN upx --best /mini-gh-sts
 
-FROM alpine:3.21
+FROM alpine:3.23
 
 COPY --from=builder /mini-gh-sts /mini-gh-sts
 
