@@ -9,6 +9,7 @@ import (
 )
 
 var validPolicy = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+var validScope = regexp.MustCompile(`^[a-zA-Z0-9_.-]+(/[a-zA-Z0-9_.-]+)?$`)
 
 // Option configures RepoPolicyStore.
 type Option func(*RepoPolicyStore)
@@ -47,6 +48,9 @@ func NewRepoPolicyStore(appID string, signer jwtSigner, opts ...Option) *RepoPol
 }
 
 func (r *RepoPolicyStore) Fetch(ctx context.Context, scope, policy string) ([]byte, error) {
+	if !validScope.MatchString(scope) || strings.Contains(scope, "..") {
+		return nil, fmt.Errorf("invalid scope %q: must match [a-zA-Z0-9_.-]+(/[a-zA-Z0-9_.-]+)?", scope)
+	}
 	if !validPolicy.MatchString(policy) {
 		return nil, fmt.Errorf("invalid policy name %q: must match [a-zA-Z0-9_-]+", policy)
 	}

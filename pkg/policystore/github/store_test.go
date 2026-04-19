@@ -95,6 +95,18 @@ func TestFetch_InvalidPolicyName(t *testing.T) {
 	}
 }
 
+// --- Fetch: scope validation ---
+
+func TestFetch_InvalidScope(t *testing.T) {
+	cases := []string{"org/repo/../evil", "org/repo/extra", "org?q=1", "org/repo#frag", "org/../evil", "/repo", "", "org/..", "org/."}
+	store := NewRepoPolicyStore("app", &testSigner{key: mustKey(t)})
+	for _, scope := range cases {
+		if _, err := store.Fetch(context.Background(), scope, "policy"); err == nil {
+			t.Errorf("expected error for scope %q, got nil", scope)
+		}
+	}
+}
+
 // --- Fetch: scope → repo resolution ---
 
 func TestFetch_OrgScope_UsesGithubRepo(t *testing.T) {
