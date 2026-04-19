@@ -50,7 +50,7 @@ func realMain() int {
 
 	sts, err := app.New(app.Config{
 		AppID:          cfg.AppID,
-		Hostname:       cfg.Hostname,
+		Audience:       cfg.Audience,
 		AllowedIssuers: cfg.AllowedIssuers,
 		Logger:         log,
 		Signer:         kmsSigner,

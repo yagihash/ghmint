@@ -37,7 +37,7 @@ func TestKMSKeyName(t *testing.T) {
 
 func TestLoad(t *testing.T) {
 	t.Run("all required fields set", func(t *testing.T) {
-		t.Setenv("STS_HOSTNAME", "sts.example.com")
+		t.Setenv("STS_AUDIENCE", "sts.example.com")
 		t.Setenv("STS_APP_ID", "123456")
 		t.Setenv("STS_KMS_PROJECT_ID", "my-project")
 		t.Setenv("STS_KMS_LOCATION", "global")
@@ -49,8 +49,8 @@ func TestLoad(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Load() error = %v", err)
 		}
-		if c.Hostname != "sts.example.com" {
-			t.Errorf("Hostname = %q, want %q", c.Hostname, "sts.example.com")
+		if c.Audience != "sts.example.com" {
+			t.Errorf("Hostname = %q, want %q", c.Audience, "sts.example.com")
 		}
 		if c.AppID != "123456" {
 			t.Errorf("AppID = %q, want %q", c.AppID, "123456")
@@ -58,7 +58,7 @@ func TestLoad(t *testing.T) {
 	})
 
 	t.Run("defaults applied", func(t *testing.T) {
-		t.Setenv("STS_HOSTNAME", "sts.example.com")
+		t.Setenv("STS_AUDIENCE", "sts.example.com")
 		t.Setenv("STS_APP_ID", "123456")
 		t.Setenv("STS_KMS_PROJECT_ID", "my-project")
 		t.Setenv("STS_KMS_LOCATION", "global")
@@ -81,7 +81,7 @@ func TestLoad(t *testing.T) {
 	})
 
 	t.Run("missing required field returns error", func(t *testing.T) {
-		unsetenv(t, "STS_HOSTNAME")
+		unsetenv(t, "STS_AUDIENCE")
 		t.Setenv("STS_APP_ID", "123456")
 		t.Setenv("STS_KMS_PROJECT_ID", "my-project")
 		t.Setenv("STS_KMS_LOCATION", "global")
