@@ -149,7 +149,7 @@ type Verifier interface {
 }
 ```
 
-- `claims`: OIDC 検証済みの ID Token 全クレーム（`minioidc.Claims.Raw`）
+- `claims`: OIDC 検証済みの ID Token 全クレーム（`internal/oidc.Claims.Raw`）
 - `scope`: `<org>` または `<org>/<repo>` 形式
 - `policy`: ポリシー名（例: `"test-policy"`）
 
@@ -172,17 +172,6 @@ type PolicyStore interface {
     Fetch(ctx context.Context, scope string, policy string) ([]byte, error)
 }
 ```
-
-### scope → リポジトリのマッピング
-
-PolicyStore は scope に `.github/mini-gh-sts/<policy>.rego` を付けてファイルを取得する:
-
-```
-scope="yagihash/mini-gh-sts" → yagihash/mini-gh-sts リポジトリの .github/mini-gh-sts/<policy>.rego
-scope="yagihash"             → yagihash/.github リポジトリの .github/mini-gh-sts/<policy>.rego
-```
-
-org のみの scope は、org 配下の複数リポジトリへのアクセスをまとめて許可するポリシーを `<org>/.github` リポジトリに置く想定。
 
 ## Rego ポリシーの契約
 
@@ -227,18 +216,6 @@ allow if {
     input.ref == "refs/heads/main"
 }
 ```
-
-## linter
-
-ポリシーファイルを静的検証する linter を提供する。
-
-- **バイナリ** (`mini-gh-sts-lint`): ローカル実行用
-- **GitHub Action**: CI 組み込み用（バイナリを内部で呼び出す）
-
-検証内容:
-- `issuer`・`permissions`・`allow` の存在
-- `permissions` のキー・値が GitHub App の有効な権限名であること
-- `scope=org/repo` 向けポリシーで `repositories` が定義されていないこと（静的解析の範囲で）
 
 ## デプロイモデル（リファレンス実装）
 
