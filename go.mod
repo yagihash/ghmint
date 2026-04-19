@@ -3,7 +3,7 @@ module github.com/yagihash/mini-gh-sts
 go 1.26.1
 
 require (
-	cloud.google.com/go/kms v1.28.0
+	cloud.google.com/go/kms v1.29.0
 	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/open-policy-agent/opa v1.15.2
