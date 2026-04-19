@@ -16,6 +16,11 @@ type jwtSigner interface {
 	SignRS256(ctx context.Context, data []byte) ([]byte, error)
 }
 
+const (
+	maxErrorBodyBytes    = 512 * 1024
+	maxResponseBodyBytes = 1 * 1024 * 1024
+)
+
 type TokenIssuer struct {
 	appID      string
 	signer     jwtSigner
@@ -27,7 +32,7 @@ type IssueResult struct {
 	Token        string
 	ExpiresAt    time.Time
 	Permissions  map[string]string
-	Repositories []string // org/repo フルパス形式
+	Repositories []string
 }
 
 func New(appID string, signer jwtSigner) *TokenIssuer {
@@ -92,14 +97,14 @@ func (t *TokenIssuer) getInstallationID(ctx context.Context, jwt, owner string) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 		return 0, fmt.Errorf("github api returned %d: %s", resp.StatusCode, string(body))
 	}
 
 	var result struct {
 		ID int64 `json:"id"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBodyBytes)).Decode(&result); err != nil {
 		return 0, fmt.Errorf("decode response: %w", err)
 	}
 
@@ -107,7 +112,6 @@ func (t *TokenIssuer) getInstallationID(ctx context.Context, jwt, owner string) 
 }
 
 func (t *TokenIssuer) requestInstallationToken(ctx context.Context, jwt string, installationID int64, permissions map[string]string, repositories []string) (IssueResult, error) {
-	// org/repo フルパス形式 → repo 名のみに変換
 	repoNames := make([]string, 0, len(repositories))
 	for _, r := range repositories {
 		_, name, found := strings.Cut(r, "/")
@@ -150,7 +154,7 @@ func (t *TokenIssuer) requestInstallationToken(ctx context.Context, jwt string, 
 		var errBody struct {
 			Message string `json:"message"`
 		}
-		json.NewDecoder(resp.Body).Decode(&errBody)
+		json.NewDecoder(io.LimitReader(resp.Body, maxErrorBodyBytes)).Decode(&errBody)
 		return IssueResult{}, fmt.Errorf("github api returned %d: %s", resp.StatusCode, errBody.Message)
 	}
 
@@ -159,7 +163,7 @@ func (t *TokenIssuer) requestInstallationToken(ctx context.Context, jwt string, 
 		ExpiresAt   string            `json:"expires_at"`
 		Permissions map[string]string `json:"permissions"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBodyBytes)).Decode(&result); err != nil {
 		return IssueResult{}, fmt.Errorf("decode response: %w", err)
 	}
 	if result.Token == "" {
@@ -175,6 +179,6 @@ func (t *TokenIssuer) requestInstallationToken(ctx context.Context, jwt string, 
 		Token:        result.Token,
 		ExpiresAt:    expiresAt,
 		Permissions:  result.Permissions,
-		Repositories: repositories, // 引数の org/repo フルパス形式をそのまま返す
+		Repositories: repositories,
 	}, nil
 }

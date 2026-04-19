@@ -1,4 +1,4 @@
-package policystore
+package github
 
 import (
 	"context"
@@ -9,6 +9,11 @@ import (
 	"net/http"
 	"strings"
 	"time"
+)
+
+const (
+	maxErrorBodyBytes    = 512 * 1024
+	maxResponseBodyBytes = 1 * 1024 * 1024
 )
 
 type jwtSigner interface {
@@ -61,14 +66,14 @@ func (c *appClient) installationID(ctx context.Context, jwt, owner string) (int6
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 		return 0, fmt.Errorf("github api returned %d: %s", resp.StatusCode, string(body))
 	}
 
 	var result struct {
 		ID int64 `json:"id"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBodyBytes)).Decode(&result); err != nil {
 		return 0, fmt.Errorf("decode response: %w", err)
 	}
 	return result.ID, nil
@@ -93,14 +98,14 @@ func (c *appClient) installationToken(ctx context.Context, jwt string, installat
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 		return "", fmt.Errorf("github api returned %d: %s", resp.StatusCode, string(body))
 	}
 
 	var result struct {
 		Token string `json:"token"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBodyBytes)).Decode(&result); err != nil {
 		return "", fmt.Errorf("decode response: %w", err)
 	}
 	if result.Token == "" {
@@ -110,7 +115,7 @@ func (c *appClient) installationToken(ctx context.Context, jwt string, installat
 }
 
 // GetFileContent fetches the content of a file in a GitHub repository.
-// repo is in "owner/repo" format, path is the file path within the repository.
+// repo must be in "owner/repo" format.
 func (c *appClient) GetFileContent(ctx context.Context, repo, path string) ([]byte, error) {
 	owner, _, _ := strings.Cut(repo, "/")
 
@@ -145,7 +150,7 @@ func (c *appClient) GetFileContent(ctx context.Context, repo, path string) ([]by
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 		return nil, fmt.Errorf("github api returned %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -153,14 +158,13 @@ func (c *appClient) GetFileContent(ctx context.Context, repo, path string) ([]by
 		Content  string `json:"content"`
 		Encoding string `json:"encoding"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBodyBytes)).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 	if result.Encoding != "base64" {
 		return nil, fmt.Errorf("unexpected encoding %q", result.Encoding)
 	}
 
-	// GitHub API wraps base64 content with newlines.
 	cleaned := strings.ReplaceAll(result.Content, "\n", "")
 	content, err := base64.StdEncoding.DecodeString(cleaned)
 	if err != nil {

@@ -14,10 +14,15 @@ import (
 
 	"github.com/yagihash/mini-gh-sts/internal/config"
 	"github.com/yagihash/mini-gh-sts/pkg/app"
-	"github.com/yagihash/mini-gh-sts/pkg/logger"
-	"github.com/yagihash/mini-gh-sts/pkg/policystore"
-	"github.com/yagihash/mini-gh-sts/pkg/signer"
-	"github.com/yagihash/mini-gh-sts/pkg/verifier"
+	"github.com/yagihash/mini-gh-sts/pkg/logger/cloudlogging"
+	ghpolicystore "github.com/yagihash/mini-gh-sts/pkg/policystore/github"
+	kmssigner "github.com/yagihash/mini-gh-sts/pkg/signer/kms"
+	regoverifier "github.com/yagihash/mini-gh-sts/pkg/verifier/rego"
+)
+
+const (
+	ExitOK = iota
+	ExitError
 )
 
 func main() {
@@ -28,31 +33,32 @@ func realMain() int {
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
-		return 1
+		return ExitError
 	}
 
-	log := logger.New(cfg.Debug)
+	log := cloudlogging.New(cfg.Debug)
 	ctx := context.Background()
 
-	kmsSigner, err := signer.NewKMSSigner(ctx, cfg.KMSKeyName())
+	kmsSigner, err := kmssigner.NewKMSSigner(ctx, cfg.KMSKeyName())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize kms signer: %v\n", err)
-		return 1
+		return ExitError
 	}
 
-	ps := policystore.NewRepoPolicyStore(cfg.AppID, kmsSigner)
-	pv := verifier.New(ps)
+	ps := ghpolicystore.NewRepoPolicyStore(cfg.AppID, kmsSigner)
+	pv := regoverifier.New(ps)
 
-	a, err := app.New(app.Config{
-		AppID:    cfg.AppID,
-		Hostname: cfg.Hostname,
-		Logger:   log,
-		Signer:   kmsSigner,
-		Verifier: pv,
+	sts, err := app.New(app.Config{
+		AppID:          cfg.AppID,
+		Audience:       cfg.Audience,
+		AllowedIssuers: cfg.AllowedIssuers,
+		Logger:         log,
+		Signer:         kmsSigner,
+		Verifier:       pv,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize app: %v\n", err)
-		return 1
+		return ExitError
 	}
 
 	sigCh := make(chan os.Signal, 1)
@@ -63,18 +69,18 @@ func realMain() int {
 		log.InfoContext(ctx, "received signal, shutting down", "signal", sig.String())
 		shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
-		if err := a.Shutdown(shutdownCtx); err != nil {
+		if err := sts.Shutdown(shutdownCtx); err != nil {
 			log.ErrorContext(ctx, "shutdown error", "error", err)
 		}
 	}()
 
 	addr := net.JoinHostPort("", strconv.Itoa(cfg.Port))
 	log.InfoContext(ctx, "server starting", "addr", addr)
-	if err := a.Serve(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := sts.Serve(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.ErrorContext(ctx, "server error", "error", err)
-		return 1
+		return ExitError
 	}
 
 	log.InfoContext(ctx, "server stopped")
-	return 0
+	return ExitOK
 }

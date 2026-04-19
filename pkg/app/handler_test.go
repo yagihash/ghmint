@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yagihash/mini-gh-sts/pkg/githubapp"
+	"github.com/yagihash/mini-gh-sts/internal/githubapp"
 	"github.com/yagihash/mini-gh-sts/pkg/logger"
-	minioidc "github.com/yagihash/mini-gh-sts/pkg/oidc"
-	"github.com/yagihash/mini-gh-sts/pkg/policyerrors"
+	minioidc "github.com/yagihash/mini-gh-sts/internal/oidc"
+	"github.com/yagihash/mini-gh-sts/pkg/verifier"
 )
 
 // --- mocks ---
@@ -150,7 +150,7 @@ func TestHandleToken_InvalidOIDCToken(t *testing.T) {
 
 func TestHandleToken_PolicyDenialError(t *testing.T) {
 	ov := &mockOIDCVerifier{claims: minioidc.Claims{Raw: map[string]interface{}{"iss": "https://example.com"}}}
-	pv := &mockPolicyVerifier{err: &policyerrors.DenialError{Reason: "denied"}}
+	pv := &mockPolicyVerifier{err: &verifier.DenialError{Reason: "denied"}}
 	srv := newTestServer(ov, nil, pv)
 	req := httptest.NewRequest(http.MethodPost, "/token", tokenRequestBody("org/repo", "pol"))
 	req.Header.Set("Content-Type", "application/json")

@@ -1,12 +1,12 @@
-package verifier_test
+package rego_test
 
 import (
 	"context"
 	"errors"
 	"testing"
 
-	"github.com/yagihash/mini-gh-sts/pkg/policyerrors"
 	"github.com/yagihash/mini-gh-sts/pkg/verifier"
+	"github.com/yagihash/mini-gh-sts/pkg/verifier/rego"
 )
 
 type staticPolicyStore struct {
@@ -30,16 +30,16 @@ func policy(body string) []byte {
 
 func assertDenialError(t *testing.T, err error) {
 	t.Helper()
-	var de *policyerrors.DenialError
+	var de *verifier.DenialError
 	if !errors.As(err, &de) {
-		t.Fatalf("expected *policyerrors.DenialError, got %T: %v", err, err)
+		t.Fatalf("expected *verifier.DenialError, got %T: %v", err, err)
 	}
 }
 
 func TestVerify_IssuerUndefined(t *testing.T) {
 	store := &staticPolicyStore{content: policy(`permissions := {"contents": "read"}
 allow := true`)}
-	v := verifier.New(store)
+	v := rego.New(store)
 	_, _, err := v.Verify(context.Background(), claims(issuer), "org/repo", "policy")
 	assertDenialError(t, err)
 }
@@ -48,7 +48,7 @@ func TestVerify_IssuerMismatch(t *testing.T) {
 	store := &staticPolicyStore{content: policy(`issuer := "https://a.example"
 permissions := {"contents": "read"}
 allow := true`)}
-	v := verifier.New(store)
+	v := rego.New(store)
 	_, _, err := v.Verify(context.Background(), claims("https://other.example"), "org/repo", "policy")
 	assertDenialError(t, err)
 }
@@ -56,7 +56,7 @@ allow := true`)}
 func TestVerify_AllowUndefined(t *testing.T) {
 	store := &staticPolicyStore{content: policy(`issuer := "https://a.example"
 permissions := {"contents": "read"}`)}
-	v := verifier.New(store)
+	v := rego.New(store)
 	_, _, err := v.Verify(context.Background(), claims(issuer), "org/repo", "policy")
 	assertDenialError(t, err)
 }
@@ -65,7 +65,7 @@ func TestVerify_AllowFalse(t *testing.T) {
 	store := &staticPolicyStore{content: policy(`issuer := "https://a.example"
 permissions := {"contents": "read"}
 allow := false`)}
-	v := verifier.New(store)
+	v := rego.New(store)
 	_, _, err := v.Verify(context.Background(), claims(issuer), "org/repo", "policy")
 	assertDenialError(t, err)
 }
@@ -73,7 +73,7 @@ allow := false`)}
 func TestVerify_PermissionsUndefined(t *testing.T) {
 	store := &staticPolicyStore{content: policy(`issuer := "https://a.example"
 allow := true`)}
-	v := verifier.New(store)
+	v := rego.New(store)
 	_, _, err := v.Verify(context.Background(), claims(issuer), "org/repo", "policy")
 	assertDenialError(t, err)
 }
@@ -84,7 +84,7 @@ allow := true`
 
 func TestVerify_Success_ReposUndefined_OrgRepo(t *testing.T) {
 	store := &staticPolicyStore{content: policy(basePolicy)}
-	v := verifier.New(store)
+	v := rego.New(store)
 	perms, repos, err := v.Verify(context.Background(), claims(issuer), "org/repo", "policy")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -99,7 +99,7 @@ func TestVerify_Success_ReposUndefined_OrgRepo(t *testing.T) {
 
 func TestVerify_Success_ReposUndefined_OrgOnly(t *testing.T) {
 	store := &staticPolicyStore{content: policy(basePolicy)}
-	v := verifier.New(store)
+	v := rego.New(store)
 	perms, repos, err := v.Verify(context.Background(), claims(issuer), "org", "policy")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -114,7 +114,7 @@ func TestVerify_Success_ReposUndefined_OrgOnly(t *testing.T) {
 
 func TestVerify_Success_ReposEmpty(t *testing.T) {
 	store := &staticPolicyStore{content: policy(basePolicy + "\nrepositories := []")}
-	v := verifier.New(store)
+	v := rego.New(store)
 	perms, repos, err := v.Verify(context.Background(), claims(issuer), "org", "policy")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -130,7 +130,7 @@ func TestVerify_Success_ReposEmpty(t *testing.T) {
 func TestVerify_Success_ReposList(t *testing.T) {
 	store := &staticPolicyStore{content: policy(basePolicy + `
 repositories := ["org/a"]`)}
-	v := verifier.New(store)
+	v := rego.New(store)
 	perms, repos, err := v.Verify(context.Background(), claims(issuer), "org", "policy")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -146,21 +146,21 @@ repositories := ["org/a"]`)}
 func TestVerify_ReposDefinedWithOrgRepoScope(t *testing.T) {
 	store := &staticPolicyStore{content: policy(basePolicy + `
 repositories := ["org/a"]`)}
-	v := verifier.New(store)
+	v := rego.New(store)
 	_, _, err := v.Verify(context.Background(), claims(issuer), "org/repo", "policy")
 	assertDenialError(t, err)
 }
 
 func TestVerify_PolicyFetchError(t *testing.T) {
 	store := &staticPolicyStore{err: errors.New("network error")}
-	v := verifier.New(store)
+	v := rego.New(store)
 	_, _, err := v.Verify(context.Background(), claims(issuer), "org/repo", "policy")
 	assertDenialError(t, err)
 }
 
 func TestVerify_RegoBadSyntax(t *testing.T) {
 	store := &staticPolicyStore{content: []byte("this is not valid rego {")}
-	v := verifier.New(store)
+	v := rego.New(store)
 	_, _, err := v.Verify(context.Background(), claims(issuer), "org/repo", "policy")
 	assertDenialError(t, err)
 }

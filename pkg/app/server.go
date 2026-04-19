@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/yagihash/mini-gh-sts/pkg/githubapp"
+	"github.com/yagihash/mini-gh-sts/internal/githubapp"
 	"github.com/yagihash/mini-gh-sts/pkg/logger"
-	minioidc "github.com/yagihash/mini-gh-sts/pkg/oidc"
+	minioidc "github.com/yagihash/mini-gh-sts/internal/oidc"
 )
 
 const (
@@ -17,7 +17,8 @@ const (
 	defaultReadTimeout         = 10 * time.Second
 	defaultWriteTimeout        = 30 * time.Second
 	defaultIdleTimeout         = 120 * time.Second
-	defaultMaxRequestBodyBytes = 1 * 1024 * 1024 // 1 MiB
+	defaultMaxRequestBodyBytes = 1 * 1024 * 1024
+	maxRequestIDLength         = 128
 )
 
 type oidcVerifier interface {
@@ -106,11 +107,10 @@ func generateRequestID() string {
 	return hex.EncodeToString(b)
 }
 
-// logMiddleware logs each request with method, path, status code, and duration.
 func (s *server) logMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID := r.Header.Get("X-Request-ID")
-		if requestID == "" {
+		if requestID == "" || len(requestID) > maxRequestIDLength {
 			requestID = generateRequestID()
 		}
 		ctx := logger.WithRequestID(r.Context(), requestID)
@@ -128,7 +128,6 @@ func (s *server) logMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// responseWriter wraps http.ResponseWriter to capture the status code.
 type responseWriter struct {
 	http.ResponseWriter
 	status int

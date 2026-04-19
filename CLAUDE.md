@@ -27,27 +27,33 @@ OIDC ID Token の検証（署名・`aud`・`exp`・`iat`）はフレームワー
 
 | パッケージ | 責務 |
 |---|---|
-| `pkg/signer` | `Signer` インターフェース定義 + KMS 実装（production 用） |
+| `pkg/signer` | `Signer` インターフェース定義のみ |
+| `pkg/signer/kms` | KMS を使った `Signer` 実装（production 用） |
 | `internal/signer` | ローカル RSA 秘密鍵を使った `Signer` 実装（開発用） |
-| `pkg/oidc` | OIDC JWT 検証（署名・`aud`・`exp`・`iat`）、コア・差し替え不可 |
-| `pkg/verifier` | 検証済み Claims をポリシーに照らして権限・リポジトリを決定。`Verifier` インターフェース定義 |
-| `pkg/policyerrors` | `DenialError` 型の定義。ポリシー起因の失敗を内部エラーと区別するための共有エラー型 |
-| `pkg/policystore` | `PolicyStore` インターフェース定義 + GitHub リポジトリからの Rego ファイル取得実装（GitHub クライアントは内部に閉じ込める） |
-| `pkg/githubapp` | GitHub App Installation Access Token の発行のみ。`Signer` インターフェースで JWT 署名（KMS 対応）。 |
+| `internal/oidc` | OIDC JWT 検証（署名・`aud`・`exp`・`iat`）、コア・差し替え不可 |
+| `pkg/verifier` | `Verifier` インターフェース定義 + `DenialError` 型 |
+| `pkg/verifier/rego` | Rego ポリシーを使った `Verifier` 実装 |
+| `pkg/policystore` | `PolicyStore` インターフェース定義のみ |
+| `pkg/policystore/github` | GitHub リポジトリから Rego ファイルを取得する `PolicyStore` 実装（GitHub クライアントは内部に閉じ込める） |
+| `internal/githubapp` | GitHub App Installation Access Token の発行のみ。`Signer` インターフェースで JWT 署名（KMS 対応）。 |
 | `pkg/app` | サービス全体を束ねる `App` 型。OIDC 検証・Token 発行・HTTP サーバーを内部で構築する。HTTP ハンドラは unexported |
 
 ## 依存関係
 
 ```
-App
-  ├─ pkg/oidc         （OIDC JWT 検証 → Claims 取得、コア）
-  ├─ pkg/verifier     （Claims + scope + policy → permissions・repositories）
-  │     ├─ pkg/policystore   （Rego ファイル取得、Verifier の内部依存）
-  │     └─ pkg/policyerrors  （DenialError 型）
-  └─ pkg/githubapp    （GitHub App Installation Access Token 発行）
+App (pkg/app)
+  ├─ internal/oidc              （OIDC JWT 検証 → Claims 取得、コア）
+  ├─ pkg/verifier               （Verifier インターフェース + DenialError）
+  └─ internal/githubapp         （GitHub App Installation Access Token 発行）
+
+main.go が組み立てる実装:
+  pkg/signer/kms                → pkg/signer.Signer を満たす
+  pkg/policystore/github        → pkg/policystore.PolicyStore を満たす
+  pkg/verifier/rego             → pkg/verifier.Verifier を満たす
+    └─ pkg/policystore/github   （Rego ファイル取得）
 ```
 
-`pkg/policystore` の `RepoPolicyStore` 実装は GitHub Contents API を使うが、そのクライアント（JWT 署名を含む）は `pkg/policystore` の内部に閉じ込める（unexported 型）。`pkg/githubapp` はトークン発行のみを担い、policystore 用クライアントとは独立している。両者はそれぞれ独自に GitHub App 認証を行う。
+`pkg/policystore/github` の `RepoPolicyStore` 実装は GitHub Contents API を使うが、そのクライアント（JWT 署名を含む）は `pkg/policystore/github` の内部に閉じ込める（unexported 型）。`internal/githubapp` はトークン発行のみを担い、policystore 用クライアントとは独立している。両者はそれぞれ独自に GitHub App 認証を行う。
 
 ## App API
 
@@ -126,10 +132,10 @@ Content-Type: application/json
 403 はポリシーが deny した場合だけでなく、ポリシーが存在しない・Rego 構文エラー・必須ルール欠如・`scope=org/repo` なのに `repositories` が defined など、ポリシー起因のあらゆる失敗に統一して使う。
 任意の OIDC プロバイダーを受け入れる設計上、有効なトークン保持者がポリシーの存在を列挙できてしまう問題への対策。詳細はサーバーログで確認する。
 
-実装上は `Verifier.Verify` が `*policyerrors.DenialError` を返した場合に 403 を返す。`DenialError` は人間向けの `Reason` フィールドを持ち、サーバーログに記録する。クライアントには理由を開示しない。
+実装上は `Verifier.Verify` が `*verifier.DenialError` を返した場合に 403 を返す。`DenialError` は人間向けの `Reason` フィールドを持ち、サーバーログに記録する。クライアントには理由を開示しない。
 
 ```go
-// pkg/policyerrors
+// pkg/verifier
 type DenialError struct {
     Reason string // サーバーログ用。クライアントには返さない
 }
@@ -143,11 +149,11 @@ type Verifier interface {
 }
 ```
 
-- `claims`: OIDC 検証済みの ID Token 全クレーム（`minioidc.Claims.Raw`）
+- `claims`: OIDC 検証済みの ID Token 全クレーム（`internal/oidc.Claims.Raw`）
 - `scope`: `<org>` または `<org>/<repo>` 形式
 - `policy`: ポリシー名（例: `"test-policy"`）
 
-`ok bool` は持たない。発行不可の場合は `*policyerrors.DenialError` を `err` として返す。内部エラー（ネットワーク障害・OPA 実行エラー等）は通常の `error` で返す。呼び出し側は `errors.As(err, &denialErr)` で区別する。
+`ok bool` は持たない。発行不可の場合は `*verifier.DenialError` を `err` として返す。内部エラー（ネットワーク障害・OPA 実行エラー等）は通常の `error` で返す。呼び出し側は `errors.As(err, &denialErr)` で区別する。
 
 ## Signer インターフェース
 
@@ -166,17 +172,6 @@ type PolicyStore interface {
     Fetch(ctx context.Context, scope string, policy string) ([]byte, error)
 }
 ```
-
-### scope → リポジトリのマッピング
-
-PolicyStore は scope に `.github/mini-gh-sts/<policy>.rego` を付けてファイルを取得する:
-
-```
-scope="yagihash/mini-gh-sts" → yagihash/mini-gh-sts リポジトリの .github/mini-gh-sts/<policy>.rego
-scope="yagihash"             → yagihash/.github リポジトリの .github/mini-gh-sts/<policy>.rego
-```
-
-org のみの scope は、org 配下の複数リポジトリへのアクセスをまとめて許可するポリシーを `<org>/.github` リポジトリに置く想定。
 
 ## Rego ポリシーの契約
 
@@ -221,18 +216,6 @@ allow if {
     input.ref == "refs/heads/main"
 }
 ```
-
-## linter
-
-ポリシーファイルを静的検証する linter を提供する。
-
-- **バイナリ** (`mini-gh-sts-lint`): ローカル実行用
-- **GitHub Action**: CI 組み込み用（バイナリを内部で呼び出す）
-
-検証内容:
-- `issuer`・`permissions`・`allow` の存在
-- `permissions` のキー・値が GitHub App の有効な権限名であること
-- `scope=org/repo` 向けポリシーで `repositories` が定義されていないこと（静的解析の範囲で）
 
 ## デプロイモデル（リファレンス実装）
 

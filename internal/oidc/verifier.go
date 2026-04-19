@@ -13,15 +13,19 @@ import (
 )
 
 type Verifier struct {
-	audience  string
-	mu        sync.Mutex
-	providers map[string]*coreidoidc.Provider
+	audience       string
+	allowedIssuers []string // nil or empty means all issuers are allowed
+	mu             sync.Mutex
+	providers      map[string]*coreidoidc.Provider
 }
 
-func New(audience string) *Verifier {
+// New creates a new Verifier. allowedIssuers restricts which OIDC issuers are
+// accepted; pass nil or an empty slice to allow any issuer.
+func New(audience string, allowedIssuers []string) *Verifier {
 	return &Verifier{
-		audience:  audience,
-		providers: make(map[string]*coreidoidc.Provider),
+		audience:       audience,
+		allowedIssuers: allowedIssuers,
+		providers:      make(map[string]*coreidoidc.Provider),
 	}
 }
 
@@ -29,22 +33,17 @@ type jwtHeader struct {
 	Alg string `json:"alg"`
 }
 
-// preVerifyClaims holds only the claims needed to discover the OIDC provider
-// before signature verification.
 type preVerifyClaims struct {
 	Iss string `json:"iss"`
 }
 
-// postVerifyClaims holds claims extracted from the verified token.
 type postVerifyClaims struct {
 	Repository      string `json:"repository"`
 	RepositoryOwner string `json:"repository_owner"`
 }
 
-// rawClaims holds all claims from the verified token as a raw map.
 type rawClaims map[string]interface{}
 
-// parseUnsafe decodes the JWT header and payload without verifying the signature.
 func parseUnsafe(rawToken string) (jwtHeader, preVerifyClaims, error) {
 	parts := strings.Split(rawToken, ".")
 	if len(parts) != 3 {
@@ -104,6 +103,19 @@ func (v *Verifier) Verify(ctx context.Context, rawToken string) (Claims, error) 
 
 	if strings.EqualFold(header.Alg, "none") {
 		return Claims{}, errors.New("jwt alg must not be none")
+	}
+
+	if len(v.allowedIssuers) > 0 {
+		allowed := false
+		for _, iss := range v.allowedIssuers {
+			if iss == pre.Iss {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return Claims{}, fmt.Errorf("issuer %q is not in the allowed issuers list", pre.Iss)
+		}
 	}
 
 	p, err := v.provider(ctx, pre.Iss)
