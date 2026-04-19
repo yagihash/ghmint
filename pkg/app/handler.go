@@ -54,9 +54,6 @@ func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {
 
 	org, _, _ := strings.Cut(req.Scope, "/")
 
-	h := sha256.Sum256([]byte(rawToken))
-	s.logger.InfoContext(r.Context(), "request", "hashed_token", base64.StdEncoding.EncodeToString(h[:]))
-
 	claims, err := s.oidcVerifier.Verify(r.Context(), rawToken)
 	if err != nil {
 		s.logger.WarnContext(r.Context(), "oidc verification failed", "error", err)
@@ -83,6 +80,9 @@ func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to issue token", "INTERNAL_ERROR")
 		return
 	}
+
+	h := sha256.Sum256([]byte(result.Token))
+	s.logger.InfoContext(r.Context(), "request", "hashed_token", base64.StdEncoding.EncodeToString(h[:]))
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
