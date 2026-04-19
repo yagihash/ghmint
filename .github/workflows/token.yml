@@ -22,11 +22,10 @@ jobs:
       - name: Test Policy ${{ matrix.num }}
         continue-on-error: true
         id: token
-        uses: ./.github/actions/token
+        uses: yagihash/sts-action@main
         with:
           scope: ${{ github.repository }}
           policy: test-policy-${{ matrix.num }}
-          hostname: mini-gh-sts.ssrf.dev
 
       - name: Verify token
         continue-on-error: true
