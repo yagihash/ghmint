@@ -43,7 +43,7 @@ func realMain() int {
 	ps := policystore.NewRepoPolicyStore(cfg.AppID, kmsSigner)
 	pv := verifier.New(ps)
 
-	a, err := app.New(app.Config{
+	sts, err := app.New(app.Config{
 		AppID:    cfg.AppID,
 		Hostname: cfg.Hostname,
 		Logger:   log,
@@ -63,14 +63,14 @@ func realMain() int {
 		log.InfoContext(ctx, "received signal, shutting down", "signal", sig.String())
 		shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
-		if err := a.Shutdown(shutdownCtx); err != nil {
+		if err := sts.Shutdown(shutdownCtx); err != nil {
 			log.ErrorContext(ctx, "shutdown error", "error", err)
 		}
 	}()
 
 	addr := net.JoinHostPort("", strconv.Itoa(cfg.Port))
 	log.InfoContext(ctx, "server starting", "addr", addr)
-	if err := a.Serve(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := sts.Serve(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.ErrorContext(ctx, "server error", "error", err)
 		return 1
 	}
