@@ -15,9 +15,6 @@ jobs:
       contents: read
       id-token: write
 
-    env:
-      IMAGE: asia-northeast1-docker.pkg.dev/yagihash-lab/sts/sts
-
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -25,8 +22,8 @@ jobs:
 
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
-          workload_identity_provider: projects/346973490040/locations/global/workloadIdentityPools/github-yagihash-pool/providers/mini-gh-sts-provider
-          service_account: mini-gh-sts@yagihash-lab.iam.gserviceaccount.com
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SA }}
 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker asia-northeast1-docker.pkg.dev --quiet
@@ -40,18 +37,22 @@ jobs:
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
           push: true
-          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          tags: ${{ vars.IMAGE }}:${{ github.sha }}
 
       - name: Sign image
         env:
+          IMAGE: ${{ vars.IMAGE }}
           DIGEST: ${{ steps.push.outputs.digest }}
         run: cosign sign --yes "$IMAGE@$DIGEST"
 
       - name: Deploy to Cloud Run
         env:
+          IMAGE: ${{ vars.IMAGE }}
           DIGEST: ${{ steps.push.outputs.digest }}
+          REGION: ${{ vars.GOOGLE_CLOUD_REGION }}
+          PROJECT_ID: ${{ vars.GOOGLE_CLOUD_PROJECT_ID }}
         run: |
           gcloud run services update sts \
             --image "$IMAGE@$DIGEST" \
-            --region asia-northeast1 \
-            --project yagihash-lab
+            --region "$REGION" \
+            --project "$PROJECT_ID"
