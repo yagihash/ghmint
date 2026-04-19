@@ -13,7 +13,7 @@ type Config struct {
 	Debug          bool     `envconfig:"DEBUG" default:"false"`
 	Audience       string   `envconfig:"AUDIENCE" required:"true"`
 	AppID          string   `envconfig:"APP_ID" required:"true"`
-	AllowedIssuers []string `envconfig:"ALLOWED_ISSUERS"`
+	AllowedIssuers []string `envconfig:"ALLOWED_ISSUERS" default:"https://token.actions.githubusercontent.com"`
 
 	KMSProjectID  string `envconfig:"KMS_PROJECT_ID" required:"true"`
 	KMSLocation   string `envconfig:"KMS_LOCATION" required:"true"`
@@ -41,6 +41,9 @@ func Load() (*Config, error) {
 	}
 	if strings.ContainsAny(c.Audience, "/:") {
 		return nil, fmt.Errorf("STS_AUDIENCE must be a plain hostname without scheme (got %q)", c.Audience)
+	}
+	if len(c.AllowedIssuers) == 0 {
+		return nil, fmt.Errorf("STS_ALLOWED_ISSUERS must not be empty: specify at least one OIDC issuer URL")
 	}
 
 	return &c, nil

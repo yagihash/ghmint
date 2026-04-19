@@ -13,6 +13,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	coreidoidc "github.com/coreos/go-oidc/v3/oidc"
 )
 
 // --- helpers ---
@@ -43,12 +45,12 @@ func publicKeyJWK(key *rsa.PublicKey, kid string) map[string]any {
 	}
 }
 
-// newTestOIDCServer starts a minimal OIDC provider serving discovery and JWKS endpoints.
+// newTestOIDCServer starts a minimal TLS OIDC provider serving discovery and JWKS endpoints.
 func newTestOIDCServer(t *testing.T, key *rsa.PublicKey) *httptest.Server {
 	t.Helper()
 	var srv *httptest.Server
-	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		issuer := "http://" + srv.Listener.Addr().String()
+	srv = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		issuer := "https://" + srv.Listener.Addr().String()
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/.well-known/openid-configuration":
@@ -69,6 +71,12 @@ func newTestOIDCServer(t *testing.T, key *rsa.PublicKey) *httptest.Server {
 	}))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// tlsCtx returns a context that trusts the test server's self-signed TLS certificate.
+func tlsCtx(t *testing.T, srv *httptest.Server) context.Context {
+	t.Helper()
+	return coreidoidc.ClientContext(context.Background(), srv.Client())
 }
 
 func signTestJWT(t *testing.T, key *rsa.PrivateKey, issuer, audience string) string {
@@ -153,11 +161,11 @@ func TestVerify_IssuerNotInAllowlist(t *testing.T) {
 func TestVerify_AllowlistNilPermitsAny(t *testing.T) {
 	key := mustGenerateRSAKey(t)
 	srv := newTestOIDCServer(t, &key.PublicKey)
-	issuer := "http://" + srv.Listener.Addr().String()
+	issuer := "https://" + srv.Listener.Addr().String()
 
 	v := New(issuer, nil)
 	token := signTestJWT(t, key, issuer, issuer)
-	if _, err := v.Verify(context.Background(), token); err != nil {
+	if _, err := v.Verify(tlsCtx(t, srv), token); err != nil {
 		t.Fatalf("unexpected error with nil allowlist: %v", err)
 	}
 }
@@ -165,11 +173,11 @@ func TestVerify_AllowlistNilPermitsAny(t *testing.T) {
 func TestVerify_Success(t *testing.T) {
 	key := mustGenerateRSAKey(t)
 	srv := newTestOIDCServer(t, &key.PublicKey)
-	issuer := "http://" + srv.Listener.Addr().String()
+	issuer := "https://" + srv.Listener.Addr().String()
 
 	v := New(issuer, []string{issuer})
 	token := signTestJWT(t, key, issuer, issuer)
-	claims, err := v.Verify(context.Background(), token)
+	claims, err := v.Verify(tlsCtx(t, srv), token)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -181,20 +189,28 @@ func TestVerify_Success(t *testing.T) {
 func TestVerify_ProviderCached(t *testing.T) {
 	key := mustGenerateRSAKey(t)
 	srv := newTestOIDCServer(t, &key.PublicKey)
-	issuer := "http://" + srv.Listener.Addr().String()
+	issuer := "https://" + srv.Listener.Addr().String()
 
 	v := New(issuer, nil)
 	token := signTestJWT(t, key, issuer, issuer)
+	ctx := tlsCtx(t, srv)
 	for range 2 {
-		if _, err := v.Verify(context.Background(), token); err != nil {
+		if _, err := v.Verify(ctx, token); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	}
 
-	v.mu.Lock()
+	v.mu.RLock()
 	n := len(v.providers)
-	v.mu.Unlock()
+	v.mu.RUnlock()
 	if n != 1 {
 		t.Errorf("expected 1 cached provider, got %d", n)
+	}
+}
+
+func TestVerify_HTTPIssuerRejected(t *testing.T) {
+	v := New("aud", nil)
+	if _, err := v.Verify(context.Background(), rawJWT("RS256", "http://issuer.example")); err == nil {
+		t.Fatal("expected error for http issuer, got nil")
 	}
 }
