@@ -70,6 +70,15 @@ allow := false`)}
 	assertDenialError(t, err)
 }
 
+func TestVerify_AllowWrongType(t *testing.T) {
+	store := &staticPolicyStore{content: policy(`issuer := "https://a.example"
+permissions := {"contents": "read"}
+allow := "yes"`)}
+	v := rego.New(store)
+	_, _, err := v.Verify(context.Background(), claims(issuer), "org/repo", "policy")
+	assertDenialError(t, err)
+}
+
 func TestVerify_PermissionsUndefined(t *testing.T) {
 	store := &staticPolicyStore{content: policy(`issuer := "https://a.example"
 allow := true`)}
