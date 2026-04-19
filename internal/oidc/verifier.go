@@ -29,22 +29,17 @@ type jwtHeader struct {
 	Alg string `json:"alg"`
 }
 
-// preVerifyClaims holds only the claims needed to discover the OIDC provider
-// before signature verification.
 type preVerifyClaims struct {
 	Iss string `json:"iss"`
 }
 
-// postVerifyClaims holds claims extracted from the verified token.
 type postVerifyClaims struct {
 	Repository      string `json:"repository"`
 	RepositoryOwner string `json:"repository_owner"`
 }
 
-// rawClaims holds all claims from the verified token as a raw map.
 type rawClaims map[string]interface{}
 
-// parseUnsafe decodes the JWT header and payload without verifying the signature.
 func parseUnsafe(rawToken string) (jwtHeader, preVerifyClaims, error) {
 	parts := strings.Split(rawToken, ".")
 	if len(parts) != 3 {

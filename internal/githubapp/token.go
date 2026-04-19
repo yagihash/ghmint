@@ -27,7 +27,7 @@ type IssueResult struct {
 	Token        string
 	ExpiresAt    time.Time
 	Permissions  map[string]string
-	Repositories []string // org/repo フルパス形式
+	Repositories []string
 }
 
 func New(appID string, signer jwtSigner) *TokenIssuer {
@@ -107,7 +107,6 @@ func (t *TokenIssuer) getInstallationID(ctx context.Context, jwt, owner string) 
 }
 
 func (t *TokenIssuer) requestInstallationToken(ctx context.Context, jwt string, installationID int64, permissions map[string]string, repositories []string) (IssueResult, error) {
-	// org/repo フルパス形式 → repo 名のみに変換
 	repoNames := make([]string, 0, len(repositories))
 	for _, r := range repositories {
 		_, name, found := strings.Cut(r, "/")
@@ -175,6 +174,6 @@ func (t *TokenIssuer) requestInstallationToken(ctx context.Context, jwt string, 
 		Token:        result.Token,
 		ExpiresAt:    expiresAt,
 		Permissions:  result.Permissions,
-		Repositories: repositories, // 引数の org/repo フルパス形式をそのまま返す
+		Repositories: repositories,
 	}, nil
 }

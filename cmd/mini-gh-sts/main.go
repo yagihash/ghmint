@@ -15,9 +15,9 @@ import (
 	"github.com/yagihash/mini-gh-sts/internal/config"
 	"github.com/yagihash/mini-gh-sts/pkg/app"
 	"github.com/yagihash/mini-gh-sts/pkg/logger/cloudlogging"
-	"github.com/yagihash/mini-gh-sts/pkg/policystore"
-	"github.com/yagihash/mini-gh-sts/pkg/signer"
-	"github.com/yagihash/mini-gh-sts/pkg/verifier"
+	ghpolicystore "github.com/yagihash/mini-gh-sts/pkg/policystore/github"
+	kmssigner "github.com/yagihash/mini-gh-sts/pkg/signer/kms"
+	regoverifier "github.com/yagihash/mini-gh-sts/pkg/verifier/rego"
 )
 
 const (
@@ -39,14 +39,14 @@ func realMain() int {
 	log := cloudlogging.New(cfg.Debug)
 	ctx := context.Background()
 
-	kmsSigner, err := signer.NewKMSSigner(ctx, cfg.KMSKeyName())
+	kmsSigner, err := kmssigner.NewKMSSigner(ctx, cfg.KMSKeyName())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize kms signer: %v\n", err)
 		return ExitError
 	}
 
-	ps := policystore.NewRepoPolicyStore(cfg.AppID, kmsSigner)
-	pv := verifier.New(ps)
+	ps := ghpolicystore.NewRepoPolicyStore(cfg.AppID, kmsSigner)
+	pv := regoverifier.New(ps)
 
 	sts, err := app.New(app.Config{
 		AppID:    cfg.AppID,

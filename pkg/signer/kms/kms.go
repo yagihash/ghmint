@@ -1,4 +1,4 @@
-package signer
+package kms
 
 import (
 	"context"
@@ -9,10 +9,9 @@ import (
 	"cloud.google.com/go/kms/apiv1/kmspb"
 )
 
-// KMSSigner implements Signer using Google Cloud KMS (RSA_SIGN_PKCS1_2048_SHA256).
 type KMSSigner struct {
 	client  *kms.KeyManagementClient
-	keyName string // projects/.../locations/.../keyRings/.../cryptoKeyVersions/...
+	keyName string
 }
 
 func NewKMSSigner(ctx context.Context, keyName string) (*KMSSigner, error) {

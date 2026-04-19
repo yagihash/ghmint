@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yagihash/mini-gh-sts/pkg/policyerrors"
+	"github.com/yagihash/mini-gh-sts/pkg/verifier"
 )
 
 func (s *server) handleHealthz(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +52,6 @@ func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// scope は <org> または <org>/<repo> 形式 — org 部分を取り出す
 	org, _, _ := strings.Cut(req.Scope, "/")
 
 	h := sha256.Sum256([]byte(rawToken))
@@ -67,7 +66,7 @@ func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {
 
 	permissions, repositories, err := s.policyVerifier.Verify(r.Context(), claims.Raw, req.Scope, req.Policy)
 	if err != nil {
-		var policyErr *policyerrors.DenialError
+		var policyErr *verifier.DenialError
 		if errors.As(err, &policyErr) {
 			s.logger.WarnContext(r.Context(), "policy denied token issuance", "scope", req.Scope, "policy", req.Policy, "reason", policyErr.Reason)
 			writeError(w, http.StatusForbidden, "token issuance denied by policy", "FORBIDDEN")

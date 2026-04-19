@@ -1,4 +1,4 @@
-package policystore
+package github
 
 import (
 	"context"
@@ -110,7 +110,7 @@ func (c *appClient) installationToken(ctx context.Context, jwt string, installat
 }
 
 // GetFileContent fetches the content of a file in a GitHub repository.
-// repo is in "owner/repo" format, path is the file path within the repository.
+// repo must be in "owner/repo" format.
 func (c *appClient) GetFileContent(ctx context.Context, repo, path string) ([]byte, error) {
 	owner, _, _ := strings.Cut(repo, "/")
 
@@ -160,7 +160,6 @@ func (c *appClient) GetFileContent(ctx context.Context, repo, path string) ([]by
 		return nil, fmt.Errorf("unexpected encoding %q", result.Encoding)
 	}
 
-	// GitHub API wraps base64 content with newlines.
 	cleaned := strings.ReplaceAll(result.Content, "\n", "")
 	content, err := base64.StdEncoding.DecodeString(cleaned)
 	if err != nil {

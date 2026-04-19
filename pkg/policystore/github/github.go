@@ -1,4 +1,4 @@
-package policystore
+package github
 
 import (
 	"context"
@@ -13,7 +13,7 @@ var validPolicy = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 // Option configures RepoPolicyStore.
 type Option func(*RepoPolicyStore)
 
-// WithHTTPClient injects a custom HTTP client, used in tests with httptest.Server.
+// WithHTTPClient injects a custom HTTP client.
 func WithHTTPClient(c *http.Client) Option {
 	return func(r *RepoPolicyStore) {
 		r.client.httpClient = c
