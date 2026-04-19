@@ -20,6 +20,11 @@ import (
 	"github.com/yagihash/mini-gh-sts/pkg/verifier"
 )
 
+const (
+	ExitOK = iota
+	ExitError
+)
+
 func main() {
 	os.Exit(realMain())
 }
@@ -28,7 +33,7 @@ func realMain() int {
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
-		return 1
+		return ExitError
 	}
 
 	log := logger.New(cfg.Debug)
@@ -37,7 +42,7 @@ func realMain() int {
 	kmsSigner, err := signer.NewKMSSigner(ctx, cfg.KMSKeyName())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize kms signer: %v\n", err)
-		return 1
+		return ExitError
 	}
 
 	ps := policystore.NewRepoPolicyStore(cfg.AppID, kmsSigner)
@@ -52,7 +57,7 @@ func realMain() int {
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize app: %v\n", err)
-		return 1
+		return ExitError
 	}
 
 	sigCh := make(chan os.Signal, 1)
@@ -72,9 +77,9 @@ func realMain() int {
 	log.InfoContext(ctx, "server starting", "addr", addr)
 	if err := sts.Serve(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.ErrorContext(ctx, "server error", "error", err)
-		return 1
+		return ExitError
 	}
 
 	log.InfoContext(ctx, "server stopped")
-	return 0
+	return ExitOK
 }
