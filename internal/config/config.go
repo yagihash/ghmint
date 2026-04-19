@@ -9,17 +9,17 @@ import (
 )
 
 type Config struct {
-	Port           int      `envconfig:"STS_PORT" default:"8080"`
-	Debug          bool     `envconfig:"STS_DEBUG" default:"false"`
-	Audience       string   `envconfig:"STS_AUDIENCE" required:"true"`
-	AppID          string   `envconfig:"STS_APP_ID" required:"true"`
-	AllowedIssuers []string `envconfig:"STS_ALLOWED_ISSUERS"`
+	Port           int      `envconfig:"PORT" default:"8080"`
+	Debug          bool     `envconfig:"DEBUG" default:"false"`
+	Audience       string   `envconfig:"AUDIENCE" required:"true"`
+	AppID          string   `envconfig:"APP_ID" required:"true"`
+	AllowedIssuers []string `envconfig:"ALLOWED_ISSUERS"`
 
-	KMSProjectID  string `envconfig:"STS_KMS_PROJECT_ID" required:"true"`
-	KMSLocation   string `envconfig:"STS_KMS_LOCATION" required:"true"`
-	KMSKeyRingID  string `envconfig:"STS_KMS_KEYRING_ID" required:"true"`
-	KMSKeyID      string `envconfig:"STS_KMS_KEY_ID" required:"true"`
-	KMSKeyVersion string `envconfig:"STS_KMS_KEY_VERSION" required:"true"`
+	KMSProjectID  string `envconfig:"KMS_PROJECT_ID" required:"true"`
+	KMSLocation   string `envconfig:"KMS_LOCATION" required:"true"`
+	KMSKeyRingID  string `envconfig:"KMS_KEYRING_ID" required:"true"`
+	KMSKeyID      string `envconfig:"KMS_KEY_ID" required:"true"`
+	KMSKeyVersion string `envconfig:"KMS_KEY_VERSION" required:"true"`
 }
 
 // KMSKeyName returns the full Cloud KMS crypto key version resource name.
@@ -32,7 +32,7 @@ func (c *Config) KMSKeyName() string {
 
 func Load() (*Config, error) {
 	var c Config
-	if err := envconfig.Process("", &c); err != nil {
+	if err := envconfig.Process("STS", &c); err != nil {
 		return nil, err
 	}
 
