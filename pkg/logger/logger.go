@@ -66,7 +66,7 @@ func New(debug bool) Logger {
 		opts.Level = slog.LevelDebug
 	}
 
-	l := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	l := slog.New(slog.NewJSONHandler(os.Stdout, opts))
 
 	return &DefaultLogger{l}
 }

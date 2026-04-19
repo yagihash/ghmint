@@ -52,7 +52,7 @@ func New(debug bool) logger.Logger {
 		opts.Level = slog.LevelDebug
 	}
 
-	l := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	l := slog.New(slog.NewJSONHandler(os.Stdout, opts))
 
 	return &CloudLoggingLogger{l}
 }
