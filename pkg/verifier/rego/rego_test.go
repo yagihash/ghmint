@@ -167,6 +167,20 @@ func TestVerify_PolicyFetchError(t *testing.T) {
 	assertDenialError(t, err)
 }
 
+func TestVerify_AllowWithEqualityInBody(t *testing.T) {
+	store := &staticPolicyStore{content: policy(`issuer := "https://a.example"
+permissions := {"contents": "read"}
+allow if {
+	input.sub = "repo:org/app:refs/heads/main"
+}`)}
+	v := rego.New(store)
+	cl := map[string]interface{}{"iss": issuer, "sub": "repo:org/app:refs/heads/main"}
+	_, _, err := v.Verify(context.Background(), cl, "org/repo", "policy")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestVerify_RegoBadSyntax(t *testing.T) {
 	store := &staticPolicyStore{content: []byte("this is not valid rego {")}
 	v := rego.New(store)

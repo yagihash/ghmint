@@ -54,7 +54,7 @@ var allowedBuiltins = map[string]bool{
 	"time.format": true, "time.date": true, "time.clock": true,
 	"time.weekday": true, "time.add_date": true, "time.diff": true,
 	// OPA internals required for evaluation
-	"assign": true, "unify": true, "internal.print": true,
+	"assign": true, "unify": true, "equal": true, "internal.print": true,
 }
 
 func safeCapabilities() *ast.Capabilities {
