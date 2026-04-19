@@ -1,6 +1,6 @@
 module github.com/yagihash/mini-gh-sts
 
-go 1.26.1
+go 1.26.2
 
 require (
 	cloud.google.com/go/kms v1.28.0
