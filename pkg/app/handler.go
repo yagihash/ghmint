@@ -53,6 +53,10 @@ func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	org, _, _ := strings.Cut(req.Scope, "/")
+	if org == "" {
+		writeError(w, http.StatusBadRequest, "invalid scope", "BAD_REQUEST")
+		return
+	}
 
 	claims, err := s.oidcVerifier.Verify(r.Context(), rawToken)
 	if err != nil {
@@ -82,7 +86,7 @@ func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h := sha256.Sum256([]byte(result.Token))
-	s.logger.InfoContext(r.Context(), "request", "hashed_token", base64.StdEncoding.EncodeToString(h[:]))
+	s.logger.InfoContext(r.Context(), "response", "hashed_token", base64.StdEncoding.EncodeToString(h[:]))
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

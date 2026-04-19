@@ -49,11 +49,12 @@ func realMain() int {
 	pv := regoverifier.New(ps)
 
 	sts, err := app.New(app.Config{
-		AppID:    cfg.AppID,
-		Hostname: cfg.Hostname,
-		Logger:   log,
-		Signer:   kmsSigner,
-		Verifier: pv,
+		AppID:          cfg.AppID,
+		Hostname:       cfg.Hostname,
+		AllowedIssuers: cfg.AllowedIssuers,
+		Logger:         log,
+		Signer:         kmsSigner,
+		Verifier:       pv,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize app: %v\n", err)

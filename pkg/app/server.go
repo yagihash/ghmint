@@ -18,6 +18,7 @@ const (
 	defaultWriteTimeout        = 30 * time.Second
 	defaultIdleTimeout         = 120 * time.Second
 	defaultMaxRequestBodyBytes = 1 * 1024 * 1024
+	maxRequestIDLength         = 128
 )
 
 type oidcVerifier interface {
@@ -109,7 +110,7 @@ func generateRequestID() string {
 func (s *server) logMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID := r.Header.Get("X-Request-ID")
-		if requestID == "" {
+		if requestID == "" || len(requestID) > maxRequestIDLength {
 			requestID = generateRequestID()
 		}
 		ctx := logger.WithRequestID(r.Context(), requestID)

@@ -11,6 +11,11 @@ import (
 	"time"
 )
 
+const (
+	maxErrorBodyBytes    = 512 * 1024
+	maxResponseBodyBytes = 1 * 1024 * 1024
+)
+
 type jwtSigner interface {
 	SignRS256(ctx context.Context, data []byte) ([]byte, error)
 }
@@ -61,14 +66,14 @@ func (c *appClient) installationID(ctx context.Context, jwt, owner string) (int6
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 		return 0, fmt.Errorf("github api returned %d: %s", resp.StatusCode, string(body))
 	}
 
 	var result struct {
 		ID int64 `json:"id"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBodyBytes)).Decode(&result); err != nil {
 		return 0, fmt.Errorf("decode response: %w", err)
 	}
 	return result.ID, nil
@@ -93,14 +98,14 @@ func (c *appClient) installationToken(ctx context.Context, jwt string, installat
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 		return "", fmt.Errorf("github api returned %d: %s", resp.StatusCode, string(body))
 	}
 
 	var result struct {
 		Token string `json:"token"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBodyBytes)).Decode(&result); err != nil {
 		return "", fmt.Errorf("decode response: %w", err)
 	}
 	if result.Token == "" {
@@ -145,7 +150,7 @@ func (c *appClient) GetFileContent(ctx context.Context, repo, path string) ([]by
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 		return nil, fmt.Errorf("github api returned %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -153,7 +158,7 @@ func (c *appClient) GetFileContent(ctx context.Context, repo, path string) ([]by
 		Content  string `json:"content"`
 		Encoding string `json:"encoding"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBodyBytes)).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
 	if result.Encoding != "base64" {

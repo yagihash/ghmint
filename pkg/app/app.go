@@ -15,12 +15,14 @@ import (
 // Config holds the configuration for App.
 // AppID, Hostname, Logger, Signer, and Verifier are required.
 // Timeout fields use built-in defaults when zero.
+// AllowedIssuers is optional: when non-empty, only tokens from listed OIDC issuers are accepted.
 type Config struct {
-	AppID    string
-	Hostname string
-	Logger   logger.Logger
-	Signer   signer.Signer
-	Verifier verifier.Verifier
+	AppID          string
+	Hostname       string
+	AllowedIssuers []string
+	Logger         logger.Logger
+	Signer         signer.Signer
+	Verifier       verifier.Verifier
 
 	ReadHeaderTimeout   time.Duration
 	ReadTimeout         time.Duration
@@ -61,7 +63,7 @@ func New(cfg Config) (*App, error) {
 		return nil, err
 	}
 
-	ov := minioidc.New(cfg.Hostname)
+	ov := minioidc.New(cfg.Hostname, cfg.AllowedIssuers)
 	ti := githubapp.New(cfg.AppID, cfg.Signer)
 	srv := newServer(cfg.Logger, ov, ti, cfg.Verifier, cfg)
 	return &App{srv: srv}, nil

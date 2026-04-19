@@ -16,6 +16,11 @@ type jwtSigner interface {
 	SignRS256(ctx context.Context, data []byte) ([]byte, error)
 }
 
+const (
+	maxErrorBodyBytes    = 512 * 1024
+	maxResponseBodyBytes = 1 * 1024 * 1024
+)
+
 type TokenIssuer struct {
 	appID      string
 	signer     jwtSigner
@@ -92,14 +97,14 @@ func (t *TokenIssuer) getInstallationID(ctx context.Context, jwt, owner string) 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 		return 0, fmt.Errorf("github api returned %d: %s", resp.StatusCode, string(body))
 	}
 
 	var result struct {
 		ID int64 `json:"id"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBodyBytes)).Decode(&result); err != nil {
 		return 0, fmt.Errorf("decode response: %w", err)
 	}
 
@@ -149,7 +154,7 @@ func (t *TokenIssuer) requestInstallationToken(ctx context.Context, jwt string, 
 		var errBody struct {
 			Message string `json:"message"`
 		}
-		json.NewDecoder(resp.Body).Decode(&errBody)
+		json.NewDecoder(io.LimitReader(resp.Body, maxErrorBodyBytes)).Decode(&errBody)
 		return IssueResult{}, fmt.Errorf("github api returned %d: %s", resp.StatusCode, errBody.Message)
 	}
 
@@ -158,7 +163,7 @@ func (t *TokenIssuer) requestInstallationToken(ctx context.Context, jwt string, 
 		ExpiresAt   string            `json:"expires_at"`
 		Permissions map[string]string `json:"permissions"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBodyBytes)).Decode(&result); err != nil {
 		return IssueResult{}, fmt.Errorf("decode response: %w", err)
 	}
 	if result.Token == "" {

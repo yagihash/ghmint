@@ -107,6 +107,10 @@ func (v *RegoVerifier) Verify(ctx context.Context, claims map[string]interface{}
 				if !ok {
 					return nil, nil, &verifier.DenialError{Reason: "policy: repositories contains non-string value"}
 				}
+				org, name, found := strings.Cut(s, "/")
+				if !found || org == "" || name == "" {
+					return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("policy: repository %q is not in owner/repo format", s)}
+				}
 				repositories = append(repositories, s)
 			}
 		}
