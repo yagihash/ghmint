@@ -82,7 +82,6 @@ func TestLoad(t *testing.T) {
 
 	t.Run("missing required field returns error", func(t *testing.T) {
 		unsetenv(t, "STS_HOSTNAME")
-		unsetenv(t, "HOSTNAME") // envconfig falls back to unprefixed key; clear system var too
 		t.Setenv("STS_APP_ID", "123456")
 		t.Setenv("STS_KMS_PROJECT_ID", "my-project")
 		t.Setenv("STS_KMS_LOCATION", "global")
