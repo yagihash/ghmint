@@ -89,12 +89,25 @@ func TestLoad(t *testing.T) {
 		}
 	})
 
-	t.Run("missing allowed issuers returns error", func(t *testing.T) {
+	t.Run("default allowed issuers applied when unset", func(t *testing.T) {
 		baseEnv(t)
 		unsetenv(t, "STS_ALLOWED_ISSUERS")
 
+		c, err := Load()
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		if len(c.AllowedIssuers) != 1 || c.AllowedIssuers[0] != "https://token.actions.githubusercontent.com" {
+			t.Errorf("AllowedIssuers = %v, want [https://token.actions.githubusercontent.com]", c.AllowedIssuers)
+		}
+	})
+
+	t.Run("empty allowed issuers returns error", func(t *testing.T) {
+		baseEnv(t)
+		t.Setenv("STS_ALLOWED_ISSUERS", "")
+
 		if _, err := Load(); err == nil {
-			t.Error("Load() expected error for missing STS_ALLOWED_ISSUERS, got nil")
+			t.Error("Load() expected error for empty STS_ALLOWED_ISSUERS, got nil")
 		}
 	})
 }
