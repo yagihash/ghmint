@@ -121,7 +121,10 @@ func (v *RegoVerifier) Verify(ctx context.Context, claims map[string]interface{}
 	if !allowExists {
 		return nil, nil, &verifier.DenialError{Reason: "policy: allow is undefined"}
 	}
-	allow, _ := allowVal.(bool)
+	allow, isBool := allowVal.(bool)
+	if !isBool {
+		return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("policy: allow has unexpected type %T", allowVal)}
+	}
 	if !allow {
 		return nil, nil, &verifier.DenialError{Reason: "policy: allow is false"}
 	}
