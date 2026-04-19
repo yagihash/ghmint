@@ -12,10 +12,10 @@ type Config struct {
 	Hostname string `envconfig:"HOSTNAME" required:"true"`
 	AppID    string `envconfig:"APP_ID" required:"true"`
 
-	KMSProjectID string `envconfig:"KMS_PROJECT_ID" required:"true"`
-	KMSLocation  string `envconfig:"KMS_LOCATION" required:"true"`
-	KMSKeyRingID string `envconfig:"KMS_KEYRING_ID" required:"true"`
-	KMSKeyID     string `envconfig:"KMS_KEY_ID" required:"true"`
+	KMSProjectID  string `envconfig:"KMS_PROJECT_ID" required:"true"`
+	KMSLocation   string `envconfig:"KMS_LOCATION" required:"true"`
+	KMSKeyRingID  string `envconfig:"KMS_KEYRING_ID" required:"true"`
+	KMSKeyID      string `envconfig:"KMS_KEY_ID" required:"true"`
 	KMSKeyVersion string `envconfig:"KMS_KEY_VERSION" required:"true"`
 }
 
