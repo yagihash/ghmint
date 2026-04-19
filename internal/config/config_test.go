@@ -36,14 +36,20 @@ func TestKMSKeyName(t *testing.T) {
 }
 
 func TestLoad(t *testing.T) {
-	t.Run("all required fields set", func(t *testing.T) {
+	baseEnv := func(t *testing.T) {
+		t.Helper()
 		t.Setenv("STS_AUDIENCE", "sts.example.com")
 		t.Setenv("STS_APP_ID", "123456")
+		t.Setenv("STS_ALLOWED_ISSUERS", "https://token.actions.githubusercontent.com")
 		t.Setenv("STS_KMS_PROJECT_ID", "my-project")
 		t.Setenv("STS_KMS_LOCATION", "global")
 		t.Setenv("STS_KMS_KEYRING_ID", "my-keyring")
 		t.Setenv("STS_KMS_KEY_ID", "my-key")
 		t.Setenv("STS_KMS_KEY_VERSION", "1")
+	}
+
+	t.Run("all required fields set", func(t *testing.T) {
+		baseEnv(t)
 
 		c, err := Load()
 		if err != nil {
@@ -58,13 +64,7 @@ func TestLoad(t *testing.T) {
 	})
 
 	t.Run("defaults applied", func(t *testing.T) {
-		t.Setenv("STS_AUDIENCE", "sts.example.com")
-		t.Setenv("STS_APP_ID", "123456")
-		t.Setenv("STS_KMS_PROJECT_ID", "my-project")
-		t.Setenv("STS_KMS_LOCATION", "global")
-		t.Setenv("STS_KMS_KEYRING_ID", "my-keyring")
-		t.Setenv("STS_KMS_KEY_ID", "my-key")
-		t.Setenv("STS_KMS_KEY_VERSION", "1")
+		baseEnv(t)
 		unsetenv(t, "STS_PORT")
 		unsetenv(t, "STS_DEBUG")
 
@@ -81,16 +81,20 @@ func TestLoad(t *testing.T) {
 	})
 
 	t.Run("missing required field returns error", func(t *testing.T) {
+		baseEnv(t)
 		unsetenv(t, "STS_AUDIENCE")
-		t.Setenv("STS_APP_ID", "123456")
-		t.Setenv("STS_KMS_PROJECT_ID", "my-project")
-		t.Setenv("STS_KMS_LOCATION", "global")
-		t.Setenv("STS_KMS_KEYRING_ID", "my-keyring")
-		t.Setenv("STS_KMS_KEY_ID", "my-key")
-		t.Setenv("STS_KMS_KEY_VERSION", "1")
 
 		if _, err := Load(); err == nil {
 			t.Error("Load() expected error, got nil")
+		}
+	})
+
+	t.Run("missing allowed issuers returns error", func(t *testing.T) {
+		baseEnv(t)
+		unsetenv(t, "STS_ALLOWED_ISSUERS")
+
+		if _, err := Load(); err == nil {
+			t.Error("Load() expected error for missing STS_ALLOWED_ISSUERS, got nil")
 		}
 	})
 }

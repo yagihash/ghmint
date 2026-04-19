@@ -42,6 +42,9 @@ func Load() (*Config, error) {
 	if strings.ContainsAny(c.Audience, "/:") {
 		return nil, fmt.Errorf("STS_AUDIENCE must be a plain hostname without scheme (got %q)", c.Audience)
 	}
+	if len(c.AllowedIssuers) == 0 {
+		return nil, fmt.Errorf("STS_ALLOWED_ISSUERS is required: specify at least one OIDC issuer URL")
+	}
 
 	return &c, nil
 }

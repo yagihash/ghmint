@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 
@@ -15,7 +16,7 @@ import (
 type Verifier struct {
 	audience       string
 	allowedIssuers []string // nil or empty means all issuers are allowed
-	mu             sync.Mutex
+	mu             sync.RWMutex
 	providers      map[string]*coreidoidc.Provider
 }
 
@@ -43,6 +44,20 @@ type postVerifyClaims struct {
 }
 
 type rawClaims map[string]interface{}
+
+func validateIssuerURL(iss string) error {
+	u, err := url.Parse(iss)
+	if err != nil {
+		return fmt.Errorf("issuer is not a valid URL: %w", err)
+	}
+	if u.Scheme != "https" {
+		return fmt.Errorf("issuer must use https scheme, got %q", u.Scheme)
+	}
+	if u.Host == "" {
+		return errors.New("issuer URL has no host")
+	}
+	return nil
+}
 
 func parseUnsafe(rawToken string) (jwtHeader, preVerifyClaims, error) {
 	parts := strings.Split(rawToken, ".")
@@ -72,9 +87,17 @@ func parseUnsafe(rawToken string) (jwtHeader, preVerifyClaims, error) {
 }
 
 func (v *Verifier) provider(ctx context.Context, issuer string) (*coreidoidc.Provider, error) {
+	v.mu.RLock()
+	p, ok := v.providers[issuer]
+	v.mu.RUnlock()
+	if ok {
+		return p, nil
+	}
+
 	v.mu.Lock()
 	defer v.mu.Unlock()
 
+	// double-checked: another goroutine may have populated the cache while we waited for the write lock
 	if p, ok := v.providers[issuer]; ok {
 		return p, nil
 	}
@@ -103,6 +126,10 @@ func (v *Verifier) Verify(ctx context.Context, rawToken string) (Claims, error) 
 
 	if strings.EqualFold(header.Alg, "none") {
 		return Claims{}, errors.New("jwt alg must not be none")
+	}
+
+	if err := validateIssuerURL(pre.Iss); err != nil {
+		return Claims{}, err
 	}
 
 	if len(v.allowedIssuers) > 0 {
