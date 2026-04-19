@@ -14,7 +14,7 @@ import (
 
 	"github.com/yagihash/mini-gh-sts/internal/config"
 	"github.com/yagihash/mini-gh-sts/pkg/app"
-	"github.com/yagihash/mini-gh-sts/pkg/logger"
+	"github.com/yagihash/mini-gh-sts/pkg/logger/cloudlogging"
 	"github.com/yagihash/mini-gh-sts/pkg/policystore"
 	"github.com/yagihash/mini-gh-sts/pkg/signer"
 	"github.com/yagihash/mini-gh-sts/pkg/verifier"
@@ -36,7 +36,7 @@ func realMain() int {
 		return ExitError
 	}
 
-	log := logger.New(cfg.Debug)
+	log := cloudlogging.New(cfg.Debug)
 	ctx := context.Background()
 
 	kmsSigner, err := signer.NewKMSSigner(ctx, cfg.KMSKeyName())
