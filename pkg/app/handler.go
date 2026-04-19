@@ -67,8 +67,7 @@ func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {
 
 	permissions, repositories, err := s.policyVerifier.Verify(r.Context(), claims.Raw, req.Scope, req.Policy)
 	if err != nil {
-		var policyErr *verifier.DenialError
-		if errors.As(err, &policyErr) {
+		if policyErr, ok2 := errors.AsType[*verifier.DenialError](err); ok2 {
 			s.logger.WarnContext(r.Context(), "policy denied token issuance", "scope", req.Scope, "policy", req.Policy, "reason", policyErr.Reason)
 			writeError(w, http.StatusForbidden, "token issuance denied by policy", "FORBIDDEN")
 		} else {
@@ -86,7 +85,12 @@ func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h := sha256.Sum256([]byte(result.Token))
-	s.logger.InfoContext(r.Context(), "response", "hashed_token", base64.StdEncoding.EncodeToString(h[:]))
+	s.logger.InfoContext(
+		r.Context(),
+		"successfully issued token",
+		"subject", claims.Raw["sub"],
+		"hashed_token", base64.StdEncoding.EncodeToString(h[:]),
+	)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
