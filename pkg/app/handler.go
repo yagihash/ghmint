@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yagihash/mini-gh-sts/pkg/verifier"
+	"github.com/yagihash/ghmint/pkg/verifier"
 )
 
 func (s *server) handleHealthz(w http.ResponseWriter, r *http.Request) {

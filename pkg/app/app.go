@@ -5,11 +5,11 @@ import (
 	"errors"
 	"time"
 
-	"github.com/yagihash/mini-gh-sts/internal/githubapp"
-	minioidc "github.com/yagihash/mini-gh-sts/internal/oidc"
-	"github.com/yagihash/mini-gh-sts/pkg/logger"
-	"github.com/yagihash/mini-gh-sts/pkg/signer"
-	"github.com/yagihash/mini-gh-sts/pkg/verifier"
+	"github.com/yagihash/ghmint/internal/githubapp"
+	minioidc "github.com/yagihash/ghmint/internal/oidc"
+	"github.com/yagihash/ghmint/pkg/logger"
+	"github.com/yagihash/ghmint/pkg/signer"
+	"github.com/yagihash/ghmint/pkg/verifier"
 )
 
 // Config holds the configuration for App.
@@ -52,7 +52,7 @@ func (c Config) Validate() error {
 	return errors.Join(errs...)
 }
 
-// App represents the mini-gh-sts service.
+// App represents the ghmint service.
 type App struct {
 	srv *server
 }

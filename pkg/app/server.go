@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/yagihash/mini-gh-sts/internal/githubapp"
-	"github.com/yagihash/mini-gh-sts/pkg/logger"
-	minioidc "github.com/yagihash/mini-gh-sts/internal/oidc"
+	"github.com/yagihash/ghmint/internal/githubapp"
+	"github.com/yagihash/ghmint/pkg/logger"
+	minioidc "github.com/yagihash/ghmint/internal/oidc"
 )
 
 const (

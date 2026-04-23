@@ -7,13 +7,13 @@ RUN go mod download
 RUN apk add --no-cache upx
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s" -o /mini-gh-sts ./cmd/mini-gh-sts
-RUN upx --best /mini-gh-sts
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s" -o /ghmint ./cmd/ghmint
+RUN upx --best /ghmint
 
 FROM alpine:3.21
 
-COPY --from=builder /mini-gh-sts /mini-gh-sts
+COPY --from=builder /ghmint /ghmint
 
 USER nobody
 EXPOSE 8080
-ENTRYPOINT ["/mini-gh-sts"]
+ENTRYPOINT ["/ghmint"]

@@ -24,7 +24,7 @@ func WithHTTPClient(c *http.Client) Option {
 // RepoPolicyStore fetches Rego policy files from GitHub repositories via the Contents API,
 // authenticating as a GitHub App using a JWT.
 //
-// The policy file path is always .github/mini-gh-sts/<policy>.rego within the repository
+// The policy file path is always .github/ghmint/<policy>.rego within the repository
 // determined by scope:
 //
 //	scope="owner/repo" → owner/repo repository
@@ -63,6 +63,6 @@ func (r *RepoPolicyStore) Fetch(ctx context.Context, scope, policy string) ([]by
 		repo = scope + "/.github"
 	}
 
-	path := fmt.Sprintf(".github/mini-gh-sts/%s.rego", policy)
+	path := fmt.Sprintf(".github/ghmint/%s.rego", policy)
 	return r.client.GetFileContent(ctx, repo, path)
 }

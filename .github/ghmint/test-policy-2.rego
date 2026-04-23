@@ -1,4 +1,4 @@
-package mini_gh_sts
+package ghmint
 
 issuer := "https://token.actions.githubusercontent.com"
 
@@ -7,5 +7,5 @@ permissions := {"contents": "read"}
 default allow := false
 
 allow if {
-	input.sub == "repo:yagihash/mini-gh-sts:pull_request"
+	input.sub == "repo:yagihash/ghmint:pull_request"
 }

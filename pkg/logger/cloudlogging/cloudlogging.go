@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/yagihash/mini-gh-sts/pkg/logger"
+	"github.com/yagihash/ghmint/pkg/logger"
 )
 
 type CloudLoggingLogger struct {

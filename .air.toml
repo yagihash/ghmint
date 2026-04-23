@@ -2,8 +2,8 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-  cmd = "go build -o dist/mini-gh-sts ./cmd/mini-gh-sts/main.go"
-  bin = "./dist/mini-gh-sts"
+  cmd = "go build -o dist/ghmint ./cmd/ghmint/main.go"
+  bin = "./dist/ghmint"
   include_ext = ["go"]
   include_file = [".envrc"]
   exclude_dir = ["dist", "vendor", ".git", ".github"]

@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yagihash/mini-gh-sts/internal/githubapp"
-	"github.com/yagihash/mini-gh-sts/pkg/logger"
-	minioidc "github.com/yagihash/mini-gh-sts/internal/oidc"
-	"github.com/yagihash/mini-gh-sts/pkg/verifier"
+	"github.com/yagihash/ghmint/internal/githubapp"
+	"github.com/yagihash/ghmint/pkg/logger"
+	minioidc "github.com/yagihash/ghmint/internal/oidc"
+	"github.com/yagihash/ghmint/pkg/verifier"
 )
 
 // --- mocks ---

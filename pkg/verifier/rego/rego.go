@@ -7,8 +7,8 @@ import (
 
 	"github.com/open-policy-agent/opa/v1/ast"
 	oparego "github.com/open-policy-agent/opa/v1/rego"
-	"github.com/yagihash/mini-gh-sts/pkg/policystore"
-	"github.com/yagihash/mini-gh-sts/pkg/verifier"
+	"github.com/yagihash/ghmint/pkg/policystore"
+	"github.com/yagihash/ghmint/pkg/verifier"
 )
 
 // allowedBuiltins is the set of OPA built-in functions that policies may use.
@@ -85,10 +85,10 @@ func (v *RegoVerifier) Verify(ctx context.Context, claims map[string]interface{}
 		return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("fetch policy: %v", err)}
 	}
 
-	// Query data.mini_gh_sts as a whole so that undefined rules are absent from the map,
+	// Query data.ghmint as a whole so that undefined rules are absent from the map,
 	// allowing correct distinction between undefined and defined-empty repositories.
 	rs, err := oparego.New(
-		oparego.Query("data.mini_gh_sts"),
+		oparego.Query("data.ghmint"),
 		oparego.Module("policy.rego", string(content)),
 		oparego.Input(claims),
 		oparego.Capabilities(safeCapabilities()),
@@ -97,11 +97,11 @@ func (v *RegoVerifier) Verify(ctx context.Context, claims map[string]interface{}
 		return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("evaluate policy: %v", err)}
 	}
 	if len(rs) == 0 || len(rs[0].Expressions) == 0 {
-		return nil, nil, &verifier.DenialError{Reason: "policy: data.mini_gh_sts is undefined (check package declaration)"}
+		return nil, nil, &verifier.DenialError{Reason: "policy: data.ghmint is undefined (check package declaration)"}
 	}
 	p, ok := rs[0].Expressions[0].Value.(map[string]interface{})
 	if !ok {
-		return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("policy: data.mini_gh_sts has unexpected type %T", rs[0].Expressions[0].Value)}
+		return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("policy: data.ghmint has unexpected type %T", rs[0].Expressions[0].Value)}
 	}
 
 	issuerVal, issuerExists := p["issuer"]

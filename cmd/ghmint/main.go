@@ -12,12 +12,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/yagihash/mini-gh-sts/internal/config"
-	"github.com/yagihash/mini-gh-sts/pkg/app"
-	"github.com/yagihash/mini-gh-sts/pkg/logger/cloudlogging"
-	ghpolicystore "github.com/yagihash/mini-gh-sts/pkg/policystore/github"
-	kmssigner "github.com/yagihash/mini-gh-sts/pkg/signer/kms"
-	regoverifier "github.com/yagihash/mini-gh-sts/pkg/verifier/rego"
+	"github.com/yagihash/ghmint/internal/config"
+	"github.com/yagihash/ghmint/pkg/app"
+	"github.com/yagihash/ghmint/pkg/logger/cloudlogging"
+	ghpolicystore "github.com/yagihash/ghmint/pkg/policystore/github"
+	kmssigner "github.com/yagihash/ghmint/pkg/signer/kms"
+	regoverifier "github.com/yagihash/ghmint/pkg/verifier/rego"
 )
 
 const (
