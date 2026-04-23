@@ -44,6 +44,11 @@ func realMain() int {
 		fmt.Fprintf(os.Stderr, "failed to initialize kms signer: %v\n", err)
 		return ExitError
 	}
+	defer func() {
+		if err := kmsSigner.Close(); err != nil {
+			log.WarnContext(ctx, "failed to close kms signer", "error", err)
+		}
+	}()
 
 	ps := ghpolicystore.NewRepoPolicyStore(cfg.AppID, kmsSigner)
 	pv := regoverifier.New(ps)
