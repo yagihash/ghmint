@@ -1,4 +1,4 @@
-# mini-gh-sts アーキテクチャガイド
+# ghmint アーキテクチャガイド
 
 ## 概要
 
@@ -73,7 +73,7 @@ if err != nil {
 a.Serve(":8080")
 ```
 
-`App` は「mini-gh-sts サービス」そのものを表す型であり、HTTP サーバーに留まらずサービスを構成するコンポーネント全体を束ねる。`app.Config` は `Validate()` メソッドを持ち、`app.New` の内部で呼ばれる。複数フィールドの検証エラーは `errors.Join` でまとめて返す。
+`App` は「ghmint サービス」そのものを表す型であり、HTTP サーバーに留まらずサービスを構成するコンポーネント全体を束ねる。`app.Config` は `Validate()` メソッドを持ち、`app.New` の内部で呼ばれる。複数フィールドの検証エラーは `errors.Join` でまとめて返す。
 
 ## HTTP API
 
@@ -175,16 +175,16 @@ type PolicyStore interface {
 
 ## Rego ポリシーの契約
 
-パッケージ名は `mini_gh_sts`。`input` には ID Token の全クレームが渡される（`sub`, `repository`, `ref`, `workflow` 等）。
+パッケージ名は `ghmint`。`input` には ID Token の全クレームが渡される（`sub`, `repository`, `ref`, `workflow` 等）。
 
 ### フレームワークが評価するルール
 
 | ルール | 必須 | 説明 |
 |---|---|---|
-| `data.mini_gh_sts.issuer` | **必須** | 許可する OIDC Issuer。フレームワークが `input.iss` と照合する。未定義なら deny。 |
-| `data.mini_gh_sts.permissions` | **必須** | 発行する Installation Token に付与する権限。未定義ならエラー。 |
-| `data.mini_gh_sts.allow` | **必須** | 発行可否。`true` でなければ deny。`false` と undefined は区別してログに記録する（前者はポリシーが明示的に拒否、後者はポリシーの設定ミス）。 |
-| `data.mini_gh_sts.repositories` | 省略可 | アクセスを許可するリポジトリ一覧。省略時はデフォルト動作（後述）。 |
+| `data.ghmint.issuer` | **必須** | 許可する OIDC Issuer。フレームワークが `input.iss` と照合する。未定義なら deny。 |
+| `data.ghmint.permissions` | **必須** | 発行する Installation Token に付与する権限。未定義ならエラー。 |
+| `data.ghmint.allow` | **必須** | 発行可否。`true` でなければ deny。`false` と undefined は区別してログに記録する（前者はポリシーが明示的に拒否、後者はポリシーの設定ミス）。 |
+| `data.ghmint.repositories` | 省略可 | アクセスを許可するリポジトリ一覧。省略時はデフォルト動作（後述）。 |
 
 ### issuer について
 
@@ -205,7 +205,7 @@ type PolicyStore interface {
 ### ポリシー例
 
 ```rego
-package mini_gh_sts
+package ghmint
 
 issuer := "https://token.actions.githubusercontent.com"
 

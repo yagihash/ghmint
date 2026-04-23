@@ -1,4 +1,4 @@
-module github.com/yagihash/mini-gh-sts
+module github.com/yagihash/ghmint
 
 go 1.26.2
 

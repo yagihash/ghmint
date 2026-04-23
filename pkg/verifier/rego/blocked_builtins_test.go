@@ -9,7 +9,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/yagihash/mini-gh-sts/pkg/verifier/rego"
+	"github.com/yagihash/ghmint/pkg/verifier/rego"
 )
 
 func TestVerify_DangerousBuiltinsBlocked(t *testing.T) {

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/yagihash/mini-gh-sts/pkg/verifier"
-	"github.com/yagihash/mini-gh-sts/pkg/verifier/rego"
+	"github.com/yagihash/ghmint/pkg/verifier"
+	"github.com/yagihash/ghmint/pkg/verifier/rego"
 )
 
 type staticPolicyStore struct {
@@ -25,7 +25,7 @@ func claims(iss string) map[string]interface{} {
 }
 
 func policy(body string) []byte {
-	return []byte("package mini_gh_sts\n\n" + body)
+	return []byte("package ghmint\n\n" + body)
 }
 
 func assertDenialError(t *testing.T, err error) {

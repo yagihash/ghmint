@@ -8,7 +8,7 @@ run = "air"
 
 [tasks.build]
 description = "Build the binary"
-run = "go build -ldflags='-s -w' -trimpath -o dist/mini-gh-sts ./cmd/mini-gh-sts/main.go"
+run = "go build -ldflags='-s -w' -trimpath -o dist/ghmint ./cmd/ghmint/main.go"
 
 [tasks.test]
 description = "Run unit tests with coverage and race detection"

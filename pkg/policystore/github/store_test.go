@@ -111,7 +111,7 @@ func TestFetch_InvalidScope(t *testing.T) {
 
 func TestFetch_OrgScope_UsesGithubRepo(t *testing.T) {
 	var capturedPath string
-	srv := newMockGitHub(t, []byte("package mini_gh_sts"), &capturedPath)
+	srv := newMockGitHub(t, []byte("package ghmint"), &capturedPath)
 	store := newTestStore(t, srv)
 
 	store.Fetch(context.Background(), "myorg", "policy")
@@ -126,7 +126,7 @@ func TestFetch_OrgScope_UsesGithubRepo(t *testing.T) {
 
 func TestFetch_OrgRepoScope_UsesScopeRepo(t *testing.T) {
 	var capturedPath string
-	srv := newMockGitHub(t, []byte("package mini_gh_sts"), &capturedPath)
+	srv := newMockGitHub(t, []byte("package ghmint"), &capturedPath)
 	store := newTestStore(t, srv)
 
 	store.Fetch(context.Background(), "myorg/myrepo", "policy")
@@ -140,7 +140,7 @@ func TestFetch_OrgRepoScope_UsesScopeRepo(t *testing.T) {
 }
 
 func TestFetch_Success_ReturnsDecodedContent(t *testing.T) {
-	expected := []byte("package mini_gh_sts\n\nallow := true")
+	expected := []byte("package ghmint\n\nallow := true")
 	srv := newMockGitHub(t, expected, nil)
 	store := newTestStore(t, srv)
 

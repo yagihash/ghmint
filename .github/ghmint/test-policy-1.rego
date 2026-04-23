@@ -1,4 +1,4 @@
-package mini_gh_sts
+package ghmint
 
 issuer := "https://token.actions.githubusercontent.com"
 
@@ -7,5 +7,5 @@ permissions := {"contents": "read"}
 default allow := false
 
 allow if {
-	regex.match(`^repo:yagihash/mini-gh-sts:.+$`, input.sub)
+	regex.match(`^repo:yagihash/ghmint:.+$`, input.sub)
 }
