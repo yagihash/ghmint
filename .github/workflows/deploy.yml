@@ -29,7 +29,9 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    environment: main
+    environment:
+      name: main
+      deployment: false
     permissions:
       contents: read
       id-token: write
