@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -263,6 +264,68 @@ func TestGetFileContent_LimitReader(t *testing.T) {
 	}
 	// Should not panic or OOM; error or truncated result are both acceptable.
 	c.GetFileContent(context.Background(), "org/repo", "file.rego")
+}
+
+// --- Cache behavior ---
+
+// TestFetch_Caches ensures that repeated Fetch calls hit the GitHub contents
+// API at most once per policy per TTL window. It guards against regressions
+// that would reintroduce per-request rate limit pressure.
+func TestFetch_Caches(t *testing.T) {
+	var (
+		mu                sync.Mutex
+		installHits       int
+		tokenHits         int
+		contentsHits      int
+	)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/installation"):
+			mu.Lock()
+			installHits++
+			mu.Unlock()
+			json.NewEncoder(w).Encode(map[string]any{"id": 1})
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/access_tokens"):
+			mu.Lock()
+			tokenHits++
+			mu.Unlock()
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]any{
+				"token":      "test-installation-token",
+				"expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+			})
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/contents/"):
+			mu.Lock()
+			contentsHits++
+			mu.Unlock()
+			json.NewEncoder(w).Encode(map[string]any{
+				"content":  base64.StdEncoding.EncodeToString([]byte("package ghmint")),
+				"encoding": "base64",
+			})
+		}
+	}))
+	defer srv.Close()
+
+	store := newTestStore(t, srv)
+	for range 3 {
+		if _, err := store.Fetch(context.Background(), "org/repo", "policy"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if installHits != 1 {
+		t.Errorf("expected 1 installation-id request, got %d", installHits)
+	}
+	if tokenHits != 1 {
+		t.Errorf("expected 1 installation-token request, got %d", tokenHits)
+	}
+	if contentsHits != 1 {
+		t.Errorf("expected 1 contents request (rest served from cache), got %d", contentsHits)
+	}
 }
 
 // suppress unused import warning — time is used in other tests added via newMockGitHub
