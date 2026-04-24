@@ -4,6 +4,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Reference](https://pkg.go.dev/badge/github.com/yagihash/ghmint.svg)](https://pkg.go.dev/github.com/yagihash/ghmint)
 
+> [!CAUTION]
+> **Not production ready.** This project is under active development. Breaking changes may be introduced at any time, and no versioned releases are planned for the near future. Use at your own risk.
+
 A lightweight Security Token Service (STS) that issues GitHub App Installation Access Tokens to callers who present a valid OIDC ID Token and satisfy a [Rego](https://www.openpolicyagent.org/docs/latest/policy-language/) policy.
 
 ## How it works
