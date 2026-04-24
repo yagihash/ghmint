@@ -10,8 +10,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/yagihash/ghmint/pkg/installation"
 )
 
 const (
@@ -23,148 +24,16 @@ const (
 	githubAPIVersion       = "2026-03-10"
 )
 
-type jwtSigner interface {
-	SignRS256(ctx context.Context, data []byte) ([]byte, error)
-}
-
-type tokenEntry struct {
-	token     string
-	expiresAt time.Time
-}
-
 type githubClient struct {
-	appID      string
-	signer     jwtSigner
-	httpClient *http.Client
-	mu         sync.Mutex
-	tokens     map[string]tokenEntry
+	installClient *installation.Client
+	httpClient    *http.Client
 }
 
-func newGithubClient(appID string, s jwtSigner) *githubClient {
+func newGithubClient(client *installation.Client) *githubClient {
 	return &githubClient{
-		appID:      appID,
-		signer:     s,
-		httpClient: &http.Client{Timeout: webhookHTTPTimeout},
-		tokens:     make(map[string]tokenEntry),
+		installClient: client,
+		httpClient:    &http.Client{Timeout: webhookHTTPTimeout},
 	}
-}
-
-func (c *githubClient) signJWT(ctx context.Context) (string, error) {
-	now := time.Now()
-	headerJSON, _ := json.Marshal(map[string]string{"typ": "JWT", "alg": "RS256"})
-	payloadJSON, _ := json.Marshal(map[string]any{
-		"iss": c.appID,
-		"iat": now.Add(-60 * time.Second).Unix(),
-		"exp": now.Add(600 * time.Second).Unix(),
-	})
-	header := base64.RawURLEncoding.EncodeToString(headerJSON)
-	payload := base64.RawURLEncoding.EncodeToString(payloadJSON)
-	signingInput := header + "." + payload
-	sig, err := c.signer.SignRS256(ctx, []byte(signingInput))
-	if err != nil {
-		return "", fmt.Errorf("sign jwt: %w", err)
-	}
-	return signingInput + "." + base64.RawURLEncoding.EncodeToString(sig), nil
-}
-
-func (c *githubClient) tokenForOwner(ctx context.Context, owner string) (string, error) {
-	c.mu.Lock()
-	if e, ok := c.tokens[owner]; ok && time.Now().Before(e.expiresAt) {
-		tok := e.token
-		c.mu.Unlock()
-		return tok, nil
-	}
-	c.mu.Unlock()
-
-	jwt, err := c.signJWT(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	installID, err := c.installationID(ctx, jwt, owner)
-	if err != nil {
-		return "", err
-	}
-
-	token, expiresAt, err := c.installationToken(ctx, jwt, installID)
-	if err != nil {
-		return "", err
-	}
-
-	c.mu.Lock()
-	c.tokens[owner] = tokenEntry{token: token, expiresAt: expiresAt.Add(-5 * time.Minute)}
-	c.mu.Unlock()
-
-	return token, nil
-}
-
-func (c *githubClient) installationID(ctx context.Context, jwt, owner string) (int64, error) {
-	reqURL := fmt.Sprintf("https://api.github.com/users/%s/installation", url.PathEscape(owner))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-	if err != nil {
-		return 0, fmt.Errorf("build request: %w", err)
-	}
-	c.setHeaders(req, jwt)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return 0, fmt.Errorf("github api: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxWebhookErrorBody))
-		return 0, fmt.Errorf("github api returned %d: %s", resp.StatusCode, body)
-	}
-
-	var result struct {
-		ID int64 `json:"id"`
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxWebhookResponseBody)).Decode(&result); err != nil {
-		return 0, fmt.Errorf("decode: %w", err)
-	}
-	return result.ID, nil
-}
-
-func (c *githubClient) installationToken(ctx context.Context, jwt string, installID int64) (string, time.Time, error) {
-	reqURL := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", installID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, strings.NewReader("{}"))
-	if err != nil {
-		return "", time.Time{}, fmt.Errorf("build request: %w", err)
-	}
-	c.setHeaders(req, jwt)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", time.Time{}, fmt.Errorf("github api: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxWebhookErrorBody))
-		return "", time.Time{}, fmt.Errorf("github api returned %d: %s", resp.StatusCode, body)
-	}
-
-	var result struct {
-		Token     string `json:"token"`
-		ExpiresAt string `json:"expires_at"`
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxWebhookResponseBody)).Decode(&result); err != nil {
-		return "", time.Time{}, fmt.Errorf("decode: %w", err)
-	}
-	if result.Token == "" {
-		return "", time.Time{}, fmt.Errorf("empty token in response")
-	}
-	expiresAt := time.Now().Add(60 * time.Minute)
-	if result.ExpiresAt != "" {
-		t, err := time.Parse(time.RFC3339, result.ExpiresAt)
-		if err != nil {
-			return "", time.Time{}, fmt.Errorf("parse expires_at: %w", err)
-		}
-		expiresAt = t
-	}
-	return result.Token, expiresAt, nil
 }
 
 // listPRFiles returns paths of changed files in the PR that match .github/ghmint/*.rego.

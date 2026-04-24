@@ -15,6 +15,7 @@ import (
 	"github.com/yagihash/ghmint/internal/config"
 	"github.com/yagihash/ghmint/internal/webhook"
 	"github.com/yagihash/ghmint/pkg/app"
+	"github.com/yagihash/ghmint/pkg/installation"
 	"github.com/yagihash/ghmint/pkg/logger/cloudlogging"
 	ghpolicystore "github.com/yagihash/ghmint/pkg/policystore/github"
 	kmssigner "github.com/yagihash/ghmint/pkg/signer/kms"
@@ -51,20 +52,21 @@ func realMain() int {
 		}
 	}()
 
-	ps := ghpolicystore.NewRepoPolicyStore(cfg.AppID, kmsSigner)
+	installClient := installation.New(cfg.AppID, kmsSigner)
+
+	ps := ghpolicystore.NewRepoPolicyStore(installClient)
 	pv := regoverifier.New(ps)
 
 	var wh *webhook.Handler
 	if cfg.WebhookSecret != "" {
-		wh = webhook.NewHandler(cfg.AppID, kmsSigner, cfg.WebhookSecret, log)
+		wh = webhook.NewHandler(installClient, cfg.WebhookSecret, log)
 	}
 
 	sts, err := app.New(app.Config{
-		AppID:          cfg.AppID,
 		Audience:       cfg.Audience,
 		AllowedIssuers: cfg.AllowedIssuers,
+		Installation:   installClient,
 		Logger:         log,
-		Signer:         kmsSigner,
 		Verifier:       pv,
 		WebhookHandler: wh,
 	})

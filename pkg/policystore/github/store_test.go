@@ -16,6 +16,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/yagihash/ghmint/pkg/installation"
+	"github.com/yagihash/ghmint/pkg/signer"
 )
 
 // redirectTransport rewrites the host of every request to the target server.
@@ -80,15 +83,22 @@ func newMockGitHub(t *testing.T, content []byte, capturedPath *string) *httptest
 func newTestStore(t *testing.T, srv *httptest.Server) *RepoPolicyStore {
 	t.Helper()
 	u, _ := url.Parse(srv.URL)
-	client := &http.Client{Transport: &redirectTransport{target: u}}
-	return NewRepoPolicyStore("test-app", &testSigner{key: mustKey(t)}, WithHTTPClient(client))
+	httpClient := &http.Client{Transport: &redirectTransport{target: u}}
+	installClient := installation.New("test-app", &testSigner{key: mustKey(t)},
+		installation.WithHTTPClient(httpClient))
+	return NewRepoPolicyStore(installClient, WithHTTPClient(httpClient))
+}
+
+func newNoNetworkStore(t *testing.T) *RepoPolicyStore {
+	t.Helper()
+	return NewRepoPolicyStore(installation.New("app", &testSigner{key: mustKey(t)}))
 }
 
 // --- Fetch: policy name validation ---
 
 func TestFetch_InvalidPolicyName(t *testing.T) {
 	cases := []string{"../../etc/passwd", "policy name", "policy/name", ""}
-	store := NewRepoPolicyStore("app", &testSigner{key: mustKey(t)})
+	store := newNoNetworkStore(t)
 	for _, name := range cases {
 		if _, err := store.Fetch(context.Background(), "org/repo", name); err == nil {
 			t.Errorf("expected error for policy name %q", name)
@@ -100,7 +110,7 @@ func TestFetch_InvalidPolicyName(t *testing.T) {
 
 func TestFetch_InvalidScope(t *testing.T) {
 	cases := []string{"org/repo/../evil", "org/repo/extra", "org?q=1", "org/repo#frag", "org/../evil", "/repo", "", "org/..", "org/."}
-	store := NewRepoPolicyStore("app", &testSigner{key: mustKey(t)})
+	store := newNoNetworkStore(t)
 	for _, scope := range cases {
 		if _, err := store.Fetch(context.Background(), scope, "policy"); err == nil {
 			t.Errorf("expected error for scope %q, got nil", scope)
@@ -154,9 +164,9 @@ func TestFetch_Success_ReturnsDecodedContent(t *testing.T) {
 	}
 }
 
-// --- GetFileContent ---
+// --- getFileContent error cases ---
 
-func TestGetFileContent_Non200(t *testing.T) {
+func TestFetch_Non200Contents(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
@@ -172,19 +182,13 @@ func TestGetFileContent_Non200(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	u, _ := url.Parse(srv.URL)
-	c := &appClient{
-		appID:      "app",
-		signer:     &testSigner{key: mustKey(t)},
-		httpClient: &http.Client{Transport: &redirectTransport{target: u}},
-		cache:      newCache(),
-	}
-	if _, err := c.GetFileContent(context.Background(), "org/repo", "path/to/file.rego"); err == nil {
+	store := newTestStore(t, srv)
+	if _, err := store.Fetch(context.Background(), "org/repo", "policy"); err == nil {
 		t.Fatal("expected error for 404 response")
 	}
 }
 
-func TestGetFileContent_UnexpectedEncoding(t *testing.T) {
+func TestFetch_UnexpectedEncoding(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
@@ -196,50 +200,37 @@ func TestGetFileContent_UnexpectedEncoding(t *testing.T) {
 		default:
 			json.NewEncoder(w).Encode(map[string]any{
 				"content":  "aGVsbG8=",
-				"encoding": "utf-8", // unexpected
+				"encoding": "utf-8",
 			})
 		}
 	}))
 	defer srv.Close()
 
-	u, _ := url.Parse(srv.URL)
-	c := &appClient{
-		appID:      "app",
-		signer:     &testSigner{key: mustKey(t)},
-		httpClient: &http.Client{Transport: &redirectTransport{target: u}},
-		cache:      newCache(),
-	}
-	if _, err := c.GetFileContent(context.Background(), "org/repo", "file.rego"); err == nil {
+	store := newTestStore(t, srv)
+	if _, err := store.Fetch(context.Background(), "org/repo", "policy"); err == nil {
 		t.Fatal("expected error for unexpected encoding")
 	}
 }
 
-func TestGetFileContent_InstallationTokenFailed(t *testing.T) {
+func TestFetch_InstallationTokenFailed(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if strings.Contains(r.URL.Path, "/installation") {
 			json.NewEncoder(w).Encode(map[string]any{"id": 1})
 			return
 		}
-		// access_tokens endpoint returns error
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(`{"message":"Bad credentials"}`))
 	}))
 	defer srv.Close()
 
-	u, _ := url.Parse(srv.URL)
-	c := &appClient{
-		appID:      "app",
-		signer:     &testSigner{key: mustKey(t)},
-		httpClient: &http.Client{Transport: &redirectTransport{target: u}},
-		cache:      newCache(),
-	}
-	if _, err := c.GetFileContent(context.Background(), "org/repo", "file.rego"); err == nil {
+	store := newTestStore(t, srv)
+	if _, err := store.Fetch(context.Background(), "org/repo", "policy"); err == nil {
 		t.Fatal("expected error for failed installation token")
 	}
 }
 
-func TestGetFileContent_LimitReader(t *testing.T) {
+func TestFetch_LimitReader(t *testing.T) {
 	oversized := strings.Repeat("x", maxResponseBodyBytes+1)
 	encoded := base64.StdEncoding.EncodeToString([]byte(oversized))
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -251,31 +242,22 @@ func TestGetFileContent_LimitReader(t *testing.T) {
 			w.WriteHeader(http.StatusCreated)
 			json.NewEncoder(w).Encode(map[string]any{"token": "tok"})
 		default:
-			// Simulate a huge JSON response; encoding field comes after the large content.
-			// We just return oversized base64 content so LimitReader truncates it,
-			// which should cause json.Decoder to fail or return truncated data.
 			fmt.Fprintf(w, `{"content":%q,"encoding":"base64"}`, encoded)
 		}
 	}))
 	defer srv.Close()
 
-	u, _ := url.Parse(srv.URL)
-	c := &appClient{
-		appID:      "app",
-		signer:     &testSigner{key: mustKey(t)},
-		httpClient: &http.Client{Transport: &redirectTransport{target: u}},
-		cache:      newCache(),
-	}
+	store := newTestStore(t, srv)
 	// Should not panic or OOM; error or truncated result are both acceptable.
-	c.GetFileContent(context.Background(), "org/repo", "file.rego")
+	store.Fetch(context.Background(), "org/repo", "policy")
 }
 
 // --- Cache behavior ---
 
-// countingSigner wraps a jwtSigner and records how many times SignRS256 is
+// countingSigner wraps a signer.Signer and records how many times SignRS256 is
 // invoked, letting tests assert KMS round-trip counts.
 type countingSigner struct {
-	inner jwtSigner
+	inner signer.Signer
 	mu    sync.Mutex
 	count int
 }
@@ -294,9 +276,7 @@ func (s *countingSigner) Count() int {
 }
 
 // TestFetch_Caches ensures that repeated Fetch calls hit the GitHub contents
-// API (and the signer) at most once per policy per TTL window. It guards
-// against regressions that would reintroduce per-request rate-limit pressure
-// or redundant KMS signing round-trips.
+// API (and the signer) at most once per policy per TTL window.
 func TestFetch_Caches(t *testing.T) {
 	var (
 		mu           sync.Mutex
@@ -335,9 +315,10 @@ func TestFetch_Caches(t *testing.T) {
 	defer srv.Close()
 
 	u, _ := url.Parse(srv.URL)
-	signer := &countingSigner{inner: &testSigner{key: mustKey(t)}}
 	httpClient := &http.Client{Transport: &redirectTransport{target: u}}
-	store := NewRepoPolicyStore("test-app", signer, WithHTTPClient(httpClient))
+	cs := &countingSigner{inner: &testSigner{key: mustKey(t)}}
+	installClient := installation.New("test-app", cs, installation.WithHTTPClient(httpClient))
+	store := NewRepoPolicyStore(installClient, WithHTTPClient(httpClient))
 
 	for range 3 {
 		if _, err := store.Fetch(context.Background(), "org/repo", "policy"); err != nil {
@@ -347,6 +328,7 @@ func TestFetch_Caches(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
+
 	if installHits != 1 {
 		t.Errorf("expected 1 installation-id request, got %d", installHits)
 	}
@@ -359,10 +341,10 @@ func TestFetch_Caches(t *testing.T) {
 	// Cold cache requires one JWT (shared across installation-id +
 	// installation-token); subsequent Fetches serve from the cached access
 	// token and must not re-sign.
-	if n := signer.Count(); n != 1 {
+	if n := cs.Count(); n != 1 {
 		t.Errorf("expected 1 JWT signing across all Fetches, got %d", n)
 	}
 }
 
-// suppress unused import warning — time is used in other tests added via newMockGitHub
+// suppress unused import warning
 var _ = time.Second

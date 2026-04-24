@@ -77,7 +77,7 @@ func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := s.tokenIssuer.Issue(r.Context(), org, permissions, repositories)
+	result, err := s.tokenIssuer.IssueToken(r.Context(), org, permissions, repositories)
 	if err != nil {
 		s.logger.ErrorContext(r.Context(), "failed to issue github app token", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to issue token", "INTERNAL_ERROR")

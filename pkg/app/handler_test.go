@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yagihash/ghmint/internal/githubapp"
-	"github.com/yagihash/ghmint/pkg/logger"
 	minioidc "github.com/yagihash/ghmint/internal/oidc"
+	"github.com/yagihash/ghmint/pkg/installation"
+	"github.com/yagihash/ghmint/pkg/logger"
 	"github.com/yagihash/ghmint/pkg/verifier"
 )
 
@@ -28,11 +28,11 @@ func (m *mockOIDCVerifier) Verify(_ context.Context, _ string) (minioidc.Claims,
 }
 
 type mockTokenIssuer struct {
-	result githubapp.IssueResult
+	result installation.IssueResult
 	err    error
 }
 
-func (m *mockTokenIssuer) Issue(_ context.Context, _ string, _ map[string]string, _ []string) (githubapp.IssueResult, error) {
+func (m *mockTokenIssuer) IssueToken(_ context.Context, _ string, _ map[string]string, _ []string) (installation.IssueResult, error) {
 	return m.result, m.err
 }
 
@@ -204,7 +204,7 @@ func TestHandleToken_Success(t *testing.T) {
 		permissions: map[string]string{"contents": "read"},
 		repos:       []string{"org/repo"},
 	}
-	ti := &mockTokenIssuer{result: githubapp.IssueResult{
+	ti := &mockTokenIssuer{result: installation.IssueResult{
 		Token:        "ghs_test",
 		ExpiresAt:    expiresAt,
 		Permissions:  map[string]string{"contents": "read"},

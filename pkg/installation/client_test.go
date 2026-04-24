@@ -1,4 +1,4 @@
-package githubapp
+package installation
 
 import (
 	"context"
@@ -15,7 +15,6 @@ import (
 	"time"
 )
 
-// redirectTransport rewrites the host of every request to the target server.
 type redirectTransport struct {
 	target *url.URL
 }
@@ -36,38 +35,42 @@ func (s *testSigner) SignRS256(_ context.Context, data []byte) ([]byte, error) {
 	return rsa.SignPKCS1v15(rand.Reader, s.key, crypto.SHA256, h[:])
 }
 
-func newTestTokenIssuer(t *testing.T, srv *httptest.Server) *TokenIssuer {
+func newTestClient(t *testing.T, srv *httptest.Server) *Client {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
 	}
 	u, _ := url.Parse(srv.URL)
-	ti := New("app-123", &testSigner{key: key})
-	ti.httpClient = &http.Client{Transport: &redirectTransport{target: u}}
-	return ti
+	return New("app-123", &testSigner{key: key}, WithHTTPClient(&http.Client{
+		Transport: &redirectTransport{target: u},
+	}))
 }
 
-func TestIssue_Success(t *testing.T) {
-	expiresAt := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func installationHandler(installID int, tokenBody map[string]any) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/installation"):
-			json.NewEncoder(w).Encode(map[string]any{"id": 42})
+			json.NewEncoder(w).Encode(map[string]any{"id": installID})
 		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/access_tokens"):
 			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]any{
-				"token":       "ghs_test_token",
-				"expires_at":  expiresAt.Format(time.RFC3339),
-				"permissions": map[string]string{"contents": "read"},
-			})
+			json.NewEncoder(w).Encode(tokenBody)
 		}
+	}
+}
+
+func TestIssueToken_Success(t *testing.T) {
+	expiresAt := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
+	srv := httptest.NewServer(installationHandler(42, map[string]any{
+		"token":       "ghs_test_token",
+		"expires_at":  expiresAt.Format(time.RFC3339),
+		"permissions": map[string]string{"contents": "read"},
 	}))
 	defer srv.Close()
 
-	ti := newTestTokenIssuer(t, srv)
-	result, err := ti.Issue(context.Background(), "myorg", map[string]string{"contents": "read"}, []string{"myorg/repo"})
+	c := newTestClient(t, srv)
+	result, err := c.IssueToken(context.Background(), "myorg", map[string]string{"contents": "read"}, []string{"myorg/repo"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -79,20 +82,20 @@ func TestIssue_Success(t *testing.T) {
 	}
 }
 
-func TestIssue_InstallationNotFound(t *testing.T) {
+func TestIssueToken_InstallationNotFound(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(map[string]string{"message": "Not Found"})
 	}))
 	defer srv.Close()
 
-	ti := newTestTokenIssuer(t, srv)
-	if _, err := ti.Issue(context.Background(), "myorg", nil, nil); err == nil {
+	c := newTestClient(t, srv)
+	if _, err := c.IssueToken(context.Background(), "myorg", nil, nil); err == nil {
 		t.Fatal("expected error for 404 installation")
 	}
 }
 
-func TestIssue_TokenCreationFailed(t *testing.T) {
+func TestIssueToken_TokenCreationFailed(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.Method == http.MethodGet {
@@ -104,13 +107,13 @@ func TestIssue_TokenCreationFailed(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ti := newTestTokenIssuer(t, srv)
-	if _, err := ti.Issue(context.Background(), "myorg", nil, nil); err == nil {
+	c := newTestClient(t, srv)
+	if _, err := c.IssueToken(context.Background(), "myorg", nil, nil); err == nil {
 		t.Fatal("expected error for 403 token creation")
 	}
 }
 
-func TestIssue_EmptyToken(t *testing.T) {
+func TestIssueToken_EmptyToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.Method == http.MethodGet {
@@ -125,13 +128,13 @@ func TestIssue_EmptyToken(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ti := newTestTokenIssuer(t, srv)
-	if _, err := ti.Issue(context.Background(), "myorg", nil, nil); err == nil {
+	c := newTestClient(t, srv)
+	if _, err := c.IssueToken(context.Background(), "myorg", nil, nil); err == nil {
 		t.Fatal("expected error for empty token in response")
 	}
 }
 
-func TestIssue_ContextCancelled(t *testing.T) {
+func TestIssueToken_ContextCancelled(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
@@ -140,15 +143,15 @@ func TestIssue_ContextCancelled(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ti := newTestTokenIssuer(t, srv)
+	c := newTestClient(t, srv)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := ti.Issue(ctx, "myorg", nil, nil); err == nil {
+	if _, err := c.IssueToken(ctx, "myorg", nil, nil); err == nil {
 		t.Fatal("expected error for cancelled context")
 	}
 }
 
-func TestIssue_RepoNamesStripped(t *testing.T) {
+func TestIssueToken_RepoNamesStripped(t *testing.T) {
 	var capturedBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -165,11 +168,46 @@ func TestIssue_RepoNamesStripped(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ti := newTestTokenIssuer(t, srv)
-	ti.Issue(context.Background(), "myorg", nil, []string{"myorg/repo-a", "myorg/repo-b"})
+	c := newTestClient(t, srv)
+	c.IssueToken(context.Background(), "myorg", nil, []string{"myorg/repo-a", "myorg/repo-b"})
 
 	repos, _ := capturedBody["repositories"].([]any)
 	if len(repos) != 2 || repos[0] != "repo-a" || repos[1] != "repo-b" {
 		t.Errorf("expected repositories=[repo-a repo-b] in request body, got %v", repos)
+	}
+}
+
+func TestTokenForOwner_Cached(t *testing.T) {
+	calls := 0
+	expiresAt := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/installation"):
+			json.NewEncoder(w).Encode(map[string]any{"id": 1})
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/access_tokens"):
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]any{
+				"token":      "ghs_cached",
+				"expires_at": expiresAt.Format(time.RFC3339),
+			})
+		}
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	for range 3 {
+		tok, err := c.TokenForOwner(context.Background(), "myorg")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if tok != "ghs_cached" {
+			t.Errorf("expected ghs_cached, got %q", tok)
+		}
+	}
+	if calls > 2 {
+		// First call: GET installation + POST access_tokens. Subsequent calls: cached.
+		t.Errorf("expected at most 2 API calls, got %d", calls)
 	}
 }

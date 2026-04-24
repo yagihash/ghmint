@@ -11,8 +11,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/yagihash/ghmint/pkg/installation"
 	"github.com/yagihash/ghmint/pkg/logger"
-	"github.com/yagihash/ghmint/pkg/signer"
 )
 
 const maxWebhookBodyBytes = 10 * 1024 * 1024
@@ -24,12 +24,12 @@ type Handler struct {
 	gh            *githubClient
 }
 
-// NewHandler creates a Handler. appID and s are used to authenticate with the GitHub App.
-func NewHandler(appID string, s signer.Signer, webhookSecret string, log logger.Logger) *Handler {
+// NewHandler creates a Handler using the given installation.Client for GitHub App authentication.
+func NewHandler(client *installation.Client, webhookSecret string, log logger.Logger) *Handler {
 	return &Handler{
 		webhookSecret: webhookSecret,
 		logger:        log,
-		gh:            newGithubClient(appID, s),
+		gh:            newGithubClient(client),
 	}
 }
 
@@ -115,7 +115,7 @@ func (h *Handler) processValidation(ctx context.Context, log logger.Logger, payl
 	// all other repositories use org/repo scope where repositories must be undefined.
 	isOrgRepo := repo != ".github"
 
-	token, err := h.gh.tokenForOwner(ctx, owner)
+	token, err := h.gh.installClient.TokenForOwner(ctx, owner)
 	if err != nil {
 		return fmt.Errorf("get installation token: %w", err)
 	}

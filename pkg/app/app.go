@@ -6,24 +6,22 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/yagihash/ghmint/internal/githubapp"
 	minioidc "github.com/yagihash/ghmint/internal/oidc"
+	"github.com/yagihash/ghmint/pkg/installation"
 	"github.com/yagihash/ghmint/pkg/logger"
-	"github.com/yagihash/ghmint/pkg/signer"
 	"github.com/yagihash/ghmint/pkg/verifier"
 )
 
 // Config holds the configuration for App.
-// AppID, Audience, Logger, Signer, and Verifier are required.
+// Audience, Installation, Logger, and Verifier are required.
 // Timeout fields use built-in defaults when zero.
 // AllowedIssuers is optional: when non-empty, only tokens from listed OIDC issuers are accepted.
 // WebhookHandler is optional: when non-nil, POST /webhook is registered with this handler.
 type Config struct {
-	AppID          string
 	Audience       string
 	AllowedIssuers []string
+	Installation   *installation.Client
 	Logger         logger.Logger
-	Signer         signer.Signer
 	Verifier       verifier.Verifier
 	WebhookHandler http.Handler
 
@@ -37,17 +35,14 @@ type Config struct {
 // Validate returns an error for each missing required field, joined with errors.Join.
 func (c Config) Validate() error {
 	var errs []error
-	if c.AppID == "" {
-		errs = append(errs, errors.New("AppID is required"))
-	}
 	if c.Audience == "" {
 		errs = append(errs, errors.New("Audience is required"))
 	}
+	if c.Installation == nil {
+		errs = append(errs, errors.New("Installation is required"))
+	}
 	if c.Logger == nil {
 		errs = append(errs, errors.New("Logger is required"))
-	}
-	if c.Signer == nil {
-		errs = append(errs, errors.New("Signer is required"))
 	}
 	if c.Verifier == nil {
 		errs = append(errs, errors.New("Verifier is required"))
@@ -67,8 +62,7 @@ func New(cfg Config) (*App, error) {
 	}
 
 	ov := minioidc.New(cfg.Audience, cfg.AllowedIssuers)
-	ti := githubapp.New(cfg.AppID, cfg.Signer)
-	srv := newServer(cfg.Logger, ov, ti, cfg.Verifier, cfg.WebhookHandler, cfg)
+	srv := newServer(cfg.Logger, ov, cfg.Installation, cfg.Verifier, cfg.WebhookHandler, cfg)
 	return &App{srv: srv}, nil
 }
 
