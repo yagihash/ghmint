@@ -125,7 +125,7 @@ func (h *Handler) processValidation(ctx context.Context, log logger.Logger, payl
 		return fmt.Errorf("list pr files: %w", err)
 	}
 	if len(files) == 0 {
-		log.InfoContext(ctx, "no rego policy files changed, skipping check run")
+		log.DebugContext(ctx, "no rego policy files changed, skipping check run")
 		return nil
 	}
 
