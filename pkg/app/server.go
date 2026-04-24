@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/yagihash/ghmint/internal/githubapp"
+	"github.com/yagihash/ghmint/pkg/installation"
 	"github.com/yagihash/ghmint/pkg/logger"
 	minioidc "github.com/yagihash/ghmint/internal/oidc"
 )
@@ -26,12 +26,7 @@ type oidcVerifier interface {
 }
 
 type tokenIssuer interface {
-	Issue(
-		ctx context.Context,
-		owner string,
-		permissions map[string]string,
-		repositories []string,
-	) (githubapp.IssueResult, error)
+	IssueToken(ctx context.Context, owner string, permissions map[string]string, repositories []string) (installation.IssueResult, error)
 }
 
 type policyVerifier interface {

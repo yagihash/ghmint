@@ -28,15 +28,18 @@ OIDC ID Token の検証（署名・`aud`・`exp`・`iat`）はフレームワー
 | パッケージ | 責務 |
 |---|---|
 | `pkg/signer` | `Signer` インターフェース定義のみ |
-| `pkg/signer/kms` | KMS を使った `Signer` 実装（production 用） |
+| `pkg/signer/kms` | KMS を使った `Signer` 実装（production 用）。`Close()` で gRPC クライアントを解放する |
 | `internal/signer` | ローカル RSA 秘密鍵を使った `Signer` 実装（開発用） |
 | `internal/oidc` | OIDC JWT 検証（署名・`aud`・`exp`・`iat`）、コア・差し替え不可 |
 | `pkg/verifier` | `Verifier` インターフェース定義 + `DenialError` 型 |
-| `pkg/verifier/rego` | Rego ポリシーを使った `Verifier` 実装 |
+| `pkg/verifier/rego` | Rego ポリシーを使った `Verifier` 実装。評価は 5 秒タイムアウト付き |
 | `pkg/policystore` | `PolicyStore` インターフェース定義のみ |
-| `pkg/policystore/github` | GitHub リポジトリから Rego ファイルを取得する `PolicyStore` 実装（GitHub クライアントは内部に閉じ込める） |
-| `internal/githubapp` | GitHub App Installation Access Token の発行のみ。`Signer` インターフェースで JWT 署名（KMS 対応）。 |
+| `pkg/policystore/github` | GitHub リポジトリから Rego ファイルを取得する `PolicyStore` 実装。`pkg/installation.Client` を使って認証する |
+| `pkg/installation` | GitHub App 認証クライアント。JWT 署名・installation ID・installation token 取得（キャッシュ付き）を提供。`TokenForOwner(ctx, owner) (string, error)` が主要 API |
+| `internal/tokenissuer` | GitHub App Installation Access Token の発行のみ。`pkg/installation.Client` を使って認証し、permissions・repositories を指定してトークンを発行する |
+| `internal/webhook` | GitHub `pull_request` webhook を受信し、`.github/ghmint/*.rego` の静的バリデーションを行い、GitHub Checks API で結果を報告する |
 | `pkg/app` | サービス全体を束ねる `App` 型。OIDC 検証・Token 発行・HTTP サーバーを内部で構築する。HTTP ハンドラは unexported |
+| `tools/gen-permissions` | GitHub REST API OpenAPI spec（`components/schemas/app-permissions`）から `internal/webhook/permissions_gen.go` を生成する |
 
 ## 依存関係
 
@@ -44,26 +47,39 @@ OIDC ID Token の検証（署名・`aud`・`exp`・`iat`）はフレームワー
 App (pkg/app)
   ├─ internal/oidc              （OIDC JWT 検証 → Claims 取得、コア）
   ├─ pkg/verifier               （Verifier インターフェース + DenialError）
-  └─ internal/githubapp         （GitHub App Installation Access Token 発行）
+  └─ internal/tokenissuer       （GitHub App Installation Access Token 発行）
+       └─ pkg/installation      （GitHub App 認証・キャッシュ）
 
 main.go が組み立てる実装:
   pkg/signer/kms                → pkg/signer.Signer を満たす
-  pkg/policystore/github        → pkg/policystore.PolicyStore を満たす
+  pkg/installation              → installation.Client を1つ生成し全コンポーネントで共有
+  pkg/policystore/github        → pkg/policystore.PolicyStore を満たす（installation.Client を受け取る）
   pkg/verifier/rego             → pkg/verifier.Verifier を満たす
     └─ pkg/policystore/github   （Rego ファイル取得）
+  internal/webhook              → WebhookHandler（installation.Client を受け取る）
 ```
 
-`pkg/policystore/github` の `RepoPolicyStore` 実装は GitHub Contents API を使うが、そのクライアント（JWT 署名を含む）は `pkg/policystore/github` の内部に閉じ込める（unexported 型）。`internal/githubapp` はトークン発行のみを担い、policystore 用クライアントとは独立している。両者はそれぞれ独自に GitHub App 認証を行う。
+`pkg/installation.Client` は `main.go` で1インスタンスだけ生成し、`internal/tokenissuer`・`pkg/policystore/github`・`internal/webhook` に注入する。これにより installation ID・installation token のキャッシュが全コンポーネントで共有される。
+
+### pkg/installation のキャッシュ設計
+
+| エントリ | TTL |
+|---|---|
+| installation ID（owner → int64） | 60 分 |
+| installation token（owner → string） | `expires_at` - 5 分 |
+
+コールドキャッシュ時も JWT 署名（KMS 呼び出し）は1回のみ（installation ID 取得とトークン発行で同一 JWT を再利用）。
 
 ## App API
 
 ```go
 cfg := app.Config{
-    AppID:    "123456",
-    Hostname: "sts.example.com",
-    Signer:   kmsSigner,
-    Verifier: regoVerifier,
-    Logger:   logger,
+    AppID:          "123456",
+    Audience:       "sts.example.com",
+    Signer:         kmsSigner,
+    Verifier:       regoVerifier,
+    Logger:         logger,
+    WebhookHandler: webhookHandler, // オプション: nil なら /webhook ルート未登録
     // オプション: ReadTimeout, WriteTimeout, IdleTimeout など
 }
 a, err := app.New(cfg)
@@ -75,6 +91,8 @@ a.Serve(":8080")
 
 `App` は「ghmint サービス」そのものを表す型であり、HTTP サーバーに留まらずサービスを構成するコンポーネント全体を束ねる。`app.Config` は `Validate()` メソッドを持ち、`app.New` の内部で呼ばれる。複数フィールドの検証エラーは `errors.Join` でまとめて返す。
 
+`WebhookHandler` は `http.Handler` として pluggable。`Signer`・`Verifier` と同じ注入パターン。`pkg/app` は `internal/webhook` を import しない。
+
 ## HTTP API
 
 ### エンドポイント
@@ -83,6 +101,7 @@ a.Serve(":8080")
 |---|---|---|
 | `GET` | `/healthz` | ヘルスチェック |
 | `POST` | `/token` | GitHub App Installation Access Token の発行 |
+| `POST` | `/webhook` | GitHub pull_request webhook 受信（`WebhookHandler` が設定されている場合のみ） |
 
 ### POST /token
 
@@ -108,6 +127,8 @@ Content-Type: application/json
   "repositories": ["yagihash/app"]   // org/repo フルパス形式
 }
 ```
+
+レスポンスには `Cache-Control: no-store` を付与する。
 
 **エラーレスポンス**
 
@@ -141,6 +162,26 @@ type DenialError struct {
 }
 ```
 
+### POST /webhook
+
+`X-Hub-Signature-256` で HMAC-SHA256 署名を検証し、`pull_request` の `opened`/`synchronize`/`reopened` アクションのみ処理する。202 Accepted を即座に返し、バリデーションは goroutine で非同期実行する。
+
+`.github/ghmint/*.rego` に変更がない PR は check run を作成しない。
+
+**バリデーション内容**:
+1. Rego 構文チェック（`ast.ParseModule`）
+2. `package ghmint` 宣言の確認
+3. `issuer`・`allow`・`permissions` 必須ルールの存在確認
+4. `permissions` の key-value 検証（OpenAPI spec 由来のリスト、per-permission の allowed values）
+5. `.github` リポジトリ以外のポリシーで `repositories` ルールが定義されていないかの確認
+
+`permissions` の valid な key-value は `tools/gen-permissions` で GitHub REST API OpenAPI spec（`components/schemas/app-permissions`）から生成し、`internal/webhook/permissions_gen.go` に保存する。毎週月曜に `.github/workflows/update-permissions.yml` が自動更新する。
+
+Check Run 名: `ghmint / policy validation`
+
+**設定**:
+- `STS_WEBHOOK_SECRET` 環境変数が未設定の場合、`/webhook` ルートは登録されない
+
 ## Verifier インターフェース
 
 ```go
@@ -164,6 +205,8 @@ type Signer interface {
 ```
 
 `ctx` は KMS API 呼び出しなどの非同期処理でキャンセルを伝播させるために必須。`internal/signer` の RSA 実装は `ctx` を無視してよい（ローカル処理のため）。
+
+`pkg/signer/kms` の実装は `Close()` メソッドを持ち、gRPC クライアントを解放する。`Close()` 後の `SignRS256` 呼び出しは `ErrSignerClosed` を返す。
 
 ## PolicyStore インターフェース
 
@@ -222,3 +265,4 @@ allow if {
 - **実行環境**: Google Cloud Run
 - **ロギング**: Cloud Logging
 - **秘密鍵管理**: Google Cloud KMS（開発時は `internal/signer` の RSA ファイル signer を使用）
+- **コンテナ**: `gcr.io/distroless/static-debian12:nonroot`（UPX 圧縮あり）
