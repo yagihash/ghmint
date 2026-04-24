@@ -69,6 +69,26 @@ Policies live alongside the code they protect — each repository (or organizati
 
 4. **Call the STS from GitHub Actions:**
 
+   The easiest way is to use [yagihash/ghmint-action](https://github.com/yagihash/ghmint-action):
+
+   ```yaml
+   permissions:
+     id-token: write   # required for OIDC token
+
+   steps:
+     - uses: yagihash/ghmint-action@<ref>
+       id: token
+       with:
+         hostname: <CLOUD_RUN_HOSTNAME>
+         scope: <org>          # or <org>/<repo>
+         policy: <policy-name>
+
+     - run: echo "${{ steps.token.outputs.token }}"
+   ```
+
+   <details>
+   <summary>Manual curl equivalent</summary>
+
    ```yaml
    - name: Get GitHub token
      id: token
@@ -81,6 +101,8 @@ Policies live alongside the code they protect — each repository (or organizati
          -d '{"scope":"<org>","policy":"<policy-name>"}')
        echo "token=$(echo $RESPONSE | jq -r .token)" >> $GITHUB_OUTPUT
    ```
+
+   </details>
 
 ## Configuration
 
