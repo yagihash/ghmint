@@ -3,11 +3,15 @@ package kms
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 
 	kms "cloud.google.com/go/kms/apiv1"
 	"cloud.google.com/go/kms/apiv1/kmspb"
 )
+
+// ErrSignerClosed is returned by SignRS256 when Close has already been called.
+var ErrSignerClosed = errors.New("kms signer: closed")
 
 type KMSSigner struct {
 	client  *kms.KeyManagementClient
@@ -34,6 +38,9 @@ func (s *KMSSigner) Close() error {
 }
 
 func (s *KMSSigner) SignRS256(ctx context.Context, data []byte) ([]byte, error) {
+	if s.client == nil {
+		return nil, ErrSignerClosed
+	}
 	h := sha256.Sum256(data)
 	resp, err := s.client.AsymmetricSign(ctx, &kmspb.AsymmetricSignRequest{
 		Name: s.keyName,
