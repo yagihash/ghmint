@@ -7,13 +7,12 @@ RUN go mod download
 RUN apk add --no-cache upx
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s" -o /ghmint ./cmd/ghmint
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /ghmint ./cmd/ghmint
 RUN upx --best /ghmint
 
-FROM alpine:3.21
+FROM gcr.io/distroless/static-debian12:nonroot
 
 COPY --from=builder /ghmint /ghmint
 
-USER nobody
 EXPOSE 8080
 ENTRYPOINT ["/ghmint"]

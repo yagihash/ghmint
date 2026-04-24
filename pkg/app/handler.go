@@ -93,8 +93,9 @@ func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {
 	)
 
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(struct {
+	if err := json.NewEncoder(w).Encode(struct {
 		Token        string            `json:"token"`
 		ExpiresAt    string            `json:"expires_at"`
 		Permissions  map[string]string `json:"permissions"`
@@ -104,7 +105,9 @@ func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt:    result.ExpiresAt.Format(time.RFC3339),
 		Permissions:  result.Permissions,
 		Repositories: result.Repositories,
-	})
+	}); err != nil {
+		s.logger.WarnContext(r.Context(), "failed to write token response", "error", err)
+	}
 }
 
 func writeError(w http.ResponseWriter, status int, msg, code string) {

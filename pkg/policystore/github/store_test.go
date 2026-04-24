@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -176,6 +177,7 @@ func TestGetFileContent_Non200(t *testing.T) {
 		appID:      "app",
 		signer:     &testSigner{key: mustKey(t)},
 		httpClient: &http.Client{Transport: &redirectTransport{target: u}},
+		cache:      newCache(),
 	}
 	if _, err := c.GetFileContent(context.Background(), "org/repo", "path/to/file.rego"); err == nil {
 		t.Fatal("expected error for 404 response")
@@ -205,6 +207,7 @@ func TestGetFileContent_UnexpectedEncoding(t *testing.T) {
 		appID:      "app",
 		signer:     &testSigner{key: mustKey(t)},
 		httpClient: &http.Client{Transport: &redirectTransport{target: u}},
+		cache:      newCache(),
 	}
 	if _, err := c.GetFileContent(context.Background(), "org/repo", "file.rego"); err == nil {
 		t.Fatal("expected error for unexpected encoding")
@@ -229,6 +232,7 @@ func TestGetFileContent_InstallationTokenFailed(t *testing.T) {
 		appID:      "app",
 		signer:     &testSigner{key: mustKey(t)},
 		httpClient: &http.Client{Transport: &redirectTransport{target: u}},
+		cache:      newCache(),
 	}
 	if _, err := c.GetFileContent(context.Background(), "org/repo", "file.rego"); err == nil {
 		t.Fatal("expected error for failed installation token")
@@ -260,9 +264,104 @@ func TestGetFileContent_LimitReader(t *testing.T) {
 		appID:      "app",
 		signer:     &testSigner{key: mustKey(t)},
 		httpClient: &http.Client{Transport: &redirectTransport{target: u}},
+		cache:      newCache(),
 	}
 	// Should not panic or OOM; error or truncated result are both acceptable.
 	c.GetFileContent(context.Background(), "org/repo", "file.rego")
+}
+
+// --- Cache behavior ---
+
+// countingSigner wraps a jwtSigner and records how many times SignRS256 is
+// invoked, letting tests assert KMS round-trip counts.
+type countingSigner struct {
+	inner jwtSigner
+	mu    sync.Mutex
+	count int
+}
+
+func (s *countingSigner) SignRS256(ctx context.Context, data []byte) ([]byte, error) {
+	s.mu.Lock()
+	s.count++
+	s.mu.Unlock()
+	return s.inner.SignRS256(ctx, data)
+}
+
+func (s *countingSigner) Count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.count
+}
+
+// TestFetch_Caches ensures that repeated Fetch calls hit the GitHub contents
+// API (and the signer) at most once per policy per TTL window. It guards
+// against regressions that would reintroduce per-request rate-limit pressure
+// or redundant KMS signing round-trips.
+func TestFetch_Caches(t *testing.T) {
+	var (
+		mu           sync.Mutex
+		installHits  int
+		tokenHits    int
+		contentsHits int
+	)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/installation"):
+			mu.Lock()
+			installHits++
+			mu.Unlock()
+			json.NewEncoder(w).Encode(map[string]any{"id": 1})
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/access_tokens"):
+			mu.Lock()
+			tokenHits++
+			mu.Unlock()
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]any{
+				"token":      "test-installation-token",
+				"expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+			})
+		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/contents/"):
+			mu.Lock()
+			contentsHits++
+			mu.Unlock()
+			json.NewEncoder(w).Encode(map[string]any{
+				"content":  base64.StdEncoding.EncodeToString([]byte("package ghmint")),
+				"encoding": "base64",
+			})
+		}
+	}))
+	defer srv.Close()
+
+	u, _ := url.Parse(srv.URL)
+	signer := &countingSigner{inner: &testSigner{key: mustKey(t)}}
+	httpClient := &http.Client{Transport: &redirectTransport{target: u}}
+	store := NewRepoPolicyStore("test-app", signer, WithHTTPClient(httpClient))
+
+	for range 3 {
+		if _, err := store.Fetch(context.Background(), "org/repo", "policy"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if installHits != 1 {
+		t.Errorf("expected 1 installation-id request, got %d", installHits)
+	}
+	if tokenHits != 1 {
+		t.Errorf("expected 1 installation-token request, got %d", tokenHits)
+	}
+	if contentsHits != 1 {
+		t.Errorf("expected 1 contents request (rest served from cache), got %d", contentsHits)
+	}
+	// Cold cache requires one JWT (shared across installation-id +
+	// installation-token); subsequent Fetches serve from the cached access
+	// token and must not re-sign.
+	if n := signer.Count(); n != 1 {
+		t.Errorf("expected 1 JWT signing across all Fetches, got %d", n)
+	}
 }
 
 // suppress unused import warning — time is used in other tests added via newMockGitHub

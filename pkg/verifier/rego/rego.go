@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/open-policy-agent/opa/v1/ast"
 	oparego "github.com/open-policy-agent/opa/v1/rego"
 	"github.com/yagihash/ghmint/pkg/policystore"
 	"github.com/yagihash/ghmint/pkg/verifier"
 )
+
+const evalTimeout = 5 * time.Second
 
 // allowedBuiltins is the set of OPA built-in functions that policies may use.
 // Side-effectful built-ins (http.send, net.lookup_ip_addr, opa.runtime, etc.) are intentionally omitted.
@@ -85,6 +88,9 @@ func (v *RegoVerifier) Verify(ctx context.Context, claims map[string]interface{}
 		return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("fetch policy: %v", err)}
 	}
 
+	evalCtx, cancel := context.WithTimeout(ctx, evalTimeout)
+	defer cancel()
+
 	// Query data.ghmint as a whole so that undefined rules are absent from the map,
 	// allowing correct distinction between undefined and defined-empty repositories.
 	rs, err := oparego.New(
@@ -92,7 +98,7 @@ func (v *RegoVerifier) Verify(ctx context.Context, claims map[string]interface{}
 		oparego.Module("policy.rego", string(content)),
 		oparego.Input(claims),
 		oparego.Capabilities(safeCapabilities()),
-	).Eval(ctx)
+	).Eval(evalCtx)
 	if err != nil {
 		return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("evaluate policy: %v", err)}
 	}

@@ -38,7 +38,8 @@ func NewRepoPolicyStore(appID string, signer jwtSigner, opts ...Option) *RepoPol
 		client: &appClient{
 			appID:      appID,
 			signer:     signer,
-			httpClient: http.DefaultClient,
+			httpClient: &http.Client{Timeout: defaultHTTPTimeout},
+			cache:      newCache(),
 		},
 	}
 	for _, opt := range opts {

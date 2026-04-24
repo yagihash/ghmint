@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -19,6 +20,7 @@ type jwtSigner interface {
 const (
 	maxErrorBodyBytes    = 512 * 1024
 	maxResponseBodyBytes = 1 * 1024 * 1024
+	defaultHTTPTimeout   = 10 * time.Second
 )
 
 type TokenIssuer struct {
@@ -39,7 +41,7 @@ func New(appID string, signer jwtSigner) *TokenIssuer {
 	return &TokenIssuer{
 		appID:      appID,
 		signer:     signer,
-		httpClient: http.DefaultClient,
+		httpClient: &http.Client{Timeout: defaultHTTPTimeout},
 	}
 }
 
@@ -80,9 +82,9 @@ func (t *TokenIssuer) signJWT(ctx context.Context) (string, error) {
 }
 
 func (t *TokenIssuer) getInstallationID(ctx context.Context, jwt, owner string) (int64, error) {
-	url := fmt.Sprintf("https://api.github.com/users/%s/installation", owner)
+	reqURL := fmt.Sprintf("https://api.github.com/users/%s/installation", url.PathEscape(owner))
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -133,9 +135,9 @@ func (t *TokenIssuer) requestInstallationToken(ctx context.Context, jwt string, 
 		return IssueResult{}, fmt.Errorf("marshal request body: %w", err)
 	}
 
-	url := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", installationID)
+	reqURL := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", installationID)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return IssueResult{}, err
 	}

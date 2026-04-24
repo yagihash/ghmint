@@ -20,8 +20,19 @@ type Verifier struct {
 	providers      map[string]*coreidoidc.Provider
 }
 
-// New creates a new Verifier. allowedIssuers restricts which OIDC issuers are
-// accepted; pass nil or an empty slice to allow any issuer.
+// New creates a new Verifier.
+//
+// allowedIssuers restricts which OIDC issuers the verifier accepts. Passing
+// nil or an empty slice disables the check and lets tokens from any issuer
+// through.
+//
+// SECURITY: because Verify triggers an OIDC discovery request against the
+// issuer URL embedded in the token, an empty allow-list exposes the caller
+// to SSRF — an attacker who can present an unsigned token can make the
+// verifier issue an https GET against any host they choose (internal
+// services, metadata endpoints with strict SSRF protections disabled, etc.).
+// Only pass nil/empty if the set of acceptable issuers is already
+// constrained upstream (e.g. a trusted gateway in front of this verifier).
 func New(audience string, allowedIssuers []string) *Verifier {
 	return &Verifier{
 		audience:       audience,

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -14,6 +15,7 @@ import (
 const (
 	maxErrorBodyBytes    = 512 * 1024
 	maxResponseBodyBytes = 1 * 1024 * 1024
+	defaultHTTPTimeout   = 10 * time.Second
 )
 
 type jwtSigner interface {
@@ -24,6 +26,7 @@ type appClient struct {
 	appID      string
 	signer     jwtSigner
 	httpClient *http.Client
+	cache      *cache
 }
 
 func (c *appClient) signJWT(ctx context.Context) (string, error) {
@@ -49,9 +52,9 @@ func (c *appClient) signJWT(ctx context.Context) (string, error) {
 }
 
 func (c *appClient) installationID(ctx context.Context, jwt, owner string) (int64, error) {
-	url := fmt.Sprintf("https://api.github.com/users/%s/installation", owner)
+	reqURL := fmt.Sprintf("https://api.github.com/users/%s/installation", url.PathEscape(owner))
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return 0, fmt.Errorf("build request: %w", err)
 	}
@@ -79,12 +82,12 @@ func (c *appClient) installationID(ctx context.Context, jwt, owner string) (int6
 	return result.ID, nil
 }
 
-func (c *appClient) installationToken(ctx context.Context, jwt string, installationID int64) (string, error) {
-	url := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", installationID)
+func (c *appClient) installationToken(ctx context.Context, jwt string, installationID int64) (string, time.Time, error) {
+	reqURL := fmt.Sprintf("https://api.github.com/app/installations/%d/access_tokens", installationID)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader("{}"))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, strings.NewReader("{}"))
 	if err != nil {
-		return "", fmt.Errorf("build request: %w", err)
+		return "", time.Time{}, fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+jwt)
 	req.Header.Set("Accept", "application/vnd.github+json")
@@ -93,49 +96,93 @@ func (c *appClient) installationToken(ctx context.Context, jwt string, installat
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("github api request: %w", err)
+		return "", time.Time{}, fmt.Errorf("github api request: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
-		return "", fmt.Errorf("github api returned %d: %s", resp.StatusCode, string(body))
+		return "", time.Time{}, fmt.Errorf("github api returned %d: %s", resp.StatusCode, string(body))
 	}
 
 	var result struct {
-		Token string `json:"token"`
+		Token     string `json:"token"`
+		ExpiresAt string `json:"expires_at"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBodyBytes)).Decode(&result); err != nil {
-		return "", fmt.Errorf("decode response: %w", err)
+		return "", time.Time{}, fmt.Errorf("decode response: %w", err)
 	}
 	if result.Token == "" {
-		return "", fmt.Errorf("empty token in response")
+		return "", time.Time{}, fmt.Errorf("empty token in response")
 	}
-	return result.Token, nil
+
+	// expires_at is optional in tests; fall back to 60 minutes (GitHub's default)
+	// so callers always receive a meaningful expiry for cache bookkeeping.
+	expiresAt := time.Now().Add(60 * time.Minute)
+	if result.ExpiresAt != "" {
+		t, err := time.Parse(time.RFC3339, result.ExpiresAt)
+		if err != nil {
+			return "", time.Time{}, fmt.Errorf("parse expires_at: %w", err)
+		}
+		expiresAt = t
+	}
+	return result.Token, expiresAt, nil
+}
+
+// installationTokenForOwner returns a cached installation token for owner,
+// refetching the installation id and/or access token as needed. A single
+// signed JWT is reused across the installation-id and access-token calls
+// to avoid a second KMS signing round-trip on cache miss.
+func (c *appClient) installationTokenForOwner(ctx context.Context, owner string) (string, error) {
+	if tok, ok := c.cache.getInstallToken(owner); ok {
+		return tok, nil
+	}
+
+	jwt, err := c.signJWT(ctx)
+	if err != nil {
+		return "", fmt.Errorf("create jwt: %w", err)
+	}
+
+	id, ok := c.cache.getInstallID(owner)
+	if !ok {
+		id, err = c.installationID(ctx, jwt, owner)
+		if err != nil {
+			return "", fmt.Errorf("get installation id: %w", err)
+		}
+		c.cache.setInstallID(owner, id)
+	}
+
+	token, expiresAt, err := c.installationToken(ctx, jwt, id)
+	if err != nil {
+		return "", fmt.Errorf("get installation token: %w", err)
+	}
+	c.cache.setInstallToken(owner, token, expiresAt)
+	return token, nil
 }
 
 // GetFileContent fetches the content of a file in a GitHub repository.
 // repo must be in "owner/repo" format.
 func (c *appClient) GetFileContent(ctx context.Context, repo, path string) ([]byte, error) {
-	owner, _, _ := strings.Cut(repo, "/")
-
-	jwt, err := c.signJWT(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("create jwt: %w", err)
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || owner == "" || name == "" {
+		return nil, fmt.Errorf("repo must be in owner/repo format: %q", repo)
 	}
 
-	id, err := c.installationID(ctx, jwt, owner)
-	if err != nil {
-		return nil, fmt.Errorf("get installation id: %w", err)
+	policyKey := repo + ":" + path
+	if cached, ok := c.cache.getPolicy(policyKey); ok {
+		return cached, nil
 	}
 
-	token, err := c.installationToken(ctx, jwt, id)
+	token, err := c.installationTokenForOwner(ctx, owner)
 	if err != nil {
-		return nil, fmt.Errorf("get installation token: %w", err)
+		return nil, err
 	}
 
-	url := fmt.Sprintf("https://api.github.com/repos/%s/contents/%s", repo, path)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	reqURL := fmt.Sprintf(
+		"https://api.github.com/repos/%s/%s/contents/%s",
+		url.PathEscape(owner), url.PathEscape(name), escapePathSegments(path),
+	)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
@@ -171,5 +218,18 @@ func (c *appClient) GetFileContent(ctx context.Context, repo, path string) ([]by
 		return nil, fmt.Errorf("decode base64 content: %w", err)
 	}
 
+	c.cache.setPolicy(policyKey, content)
 	return content, nil
+}
+
+// escapePathSegments applies url.PathEscape to each "/"-separated segment of
+// path, preserving the slashes so the result is safe to interpolate into a
+// URL path. Fetch already restricts policy names upstream; this is
+// defense-in-depth for the shared GitHub contents helper.
+func escapePathSegments(p string) string {
+	segs := strings.Split(p, "/")
+	for i, s := range segs {
+		segs[i] = url.PathEscape(s)
+	}
+	return strings.Join(segs, "/")
 }
