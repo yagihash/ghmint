@@ -43,16 +43,18 @@ type server struct {
 	oidcVerifier        oidcVerifier
 	tokenIssuer         tokenIssuer
 	policyVerifier      policyVerifier
+	webhookHandler      http.Handler
 	maxRequestBodyBytes int64
 	httpServer          *http.Server
 }
 
-func newServer(log logger.Logger, ov oidcVerifier, ti tokenIssuer, pv policyVerifier, cfg Config) *server {
+func newServer(log logger.Logger, ov oidcVerifier, ti tokenIssuer, pv policyVerifier, wh http.Handler, cfg Config) *server {
 	s := &server{
 		logger:         log,
 		oidcVerifier:   ov,
 		tokenIssuer:    ti,
 		policyVerifier: pv,
+		webhookHandler: wh,
 	}
 
 	s.maxRequestBodyBytes = cfg.MaxRequestBodyBytes
@@ -80,6 +82,9 @@ func newServer(log logger.Logger, ov oidcVerifier, ti tokenIssuer, pv policyVeri
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 	mux.HandleFunc("POST /token", s.handleToken)
+	if s.webhookHandler != nil {
+		mux.Handle("POST /webhook", s.webhookHandler)
+	}
 
 	s.httpServer = &http.Server{
 		Handler:           s.logMiddleware(mux),

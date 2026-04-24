@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"net/http"
 	"time"
 
 	"github.com/yagihash/ghmint/internal/githubapp"
@@ -16,6 +17,7 @@ import (
 // AppID, Audience, Logger, Signer, and Verifier are required.
 // Timeout fields use built-in defaults when zero.
 // AllowedIssuers is optional: when non-empty, only tokens from listed OIDC issuers are accepted.
+// WebhookHandler is optional: when non-nil, POST /webhook is registered with this handler.
 type Config struct {
 	AppID          string
 	Audience       string
@@ -23,6 +25,7 @@ type Config struct {
 	Logger         logger.Logger
 	Signer         signer.Signer
 	Verifier       verifier.Verifier
+	WebhookHandler http.Handler
 
 	ReadHeaderTimeout   time.Duration
 	ReadTimeout         time.Duration
@@ -65,7 +68,7 @@ func New(cfg Config) (*App, error) {
 
 	ov := minioidc.New(cfg.Audience, cfg.AllowedIssuers)
 	ti := githubapp.New(cfg.AppID, cfg.Signer)
-	srv := newServer(cfg.Logger, ov, ti, cfg.Verifier, cfg)
+	srv := newServer(cfg.Logger, ov, ti, cfg.Verifier, cfg.WebhookHandler, cfg)
 	return &App{srv: srv}, nil
 }
 

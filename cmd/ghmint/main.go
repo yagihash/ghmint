@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/yagihash/ghmint/internal/config"
+	"github.com/yagihash/ghmint/internal/webhook"
 	"github.com/yagihash/ghmint/pkg/app"
 	"github.com/yagihash/ghmint/pkg/logger/cloudlogging"
 	ghpolicystore "github.com/yagihash/ghmint/pkg/policystore/github"
@@ -53,6 +54,11 @@ func realMain() int {
 	ps := ghpolicystore.NewRepoPolicyStore(cfg.AppID, kmsSigner)
 	pv := regoverifier.New(ps)
 
+	var wh *webhook.Handler
+	if cfg.WebhookSecret != "" {
+		wh = webhook.NewHandler(cfg.AppID, kmsSigner, cfg.WebhookSecret, log)
+	}
+
 	sts, err := app.New(app.Config{
 		AppID:          cfg.AppID,
 		Audience:       cfg.Audience,
@@ -60,6 +66,7 @@ func realMain() int {
 		Logger:         log,
 		Signer:         kmsSigner,
 		Verifier:       pv,
+		WebhookHandler: wh,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize app: %v\n", err)
