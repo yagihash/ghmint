@@ -46,7 +46,7 @@ jobs:
 
             PR_URL=$(gh pr create \
               --title "chore: update GitHub App permissions from OpenAPI spec" \
-              --body $'`internal/webhook/permissions_gen.go` を GitHub REST API OpenAPI spec から再生成しました。\n\n- Source: `components/schemas/app-permissions`\n- Generator: `tools/gen-permissions`' \
+              --body $'Regenerated `internal/webhook/permissions_gen.go` from the GitHub REST API OpenAPI spec.\n\n- Source: `components/schemas/app-permissions`\n- Generator: `tools/gen-permissions`' \
               --base main \
               --head "$BRANCH" 2>&1 \
               || gh pr view "$BRANCH" --json url --jq '.url')
