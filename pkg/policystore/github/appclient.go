@@ -181,7 +181,7 @@ func (c *appClient) GetFileContent(ctx context.Context, repo, path string) ([]by
 
 	reqURL := fmt.Sprintf(
 		"https://api.github.com/repos/%s/%s/contents/%s",
-		url.PathEscape(owner), url.PathEscape(name), path,
+		url.PathEscape(owner), url.PathEscape(name), escapePathSegments(path),
 	)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
@@ -221,4 +221,16 @@ func (c *appClient) GetFileContent(ctx context.Context, repo, path string) ([]by
 
 	c.cache.setPolicy(policyKey, content)
 	return content, nil
+}
+
+// escapePathSegments applies url.PathEscape to each "/"-separated segment of
+// path, preserving the slashes so the result is safe to interpolate into a
+// URL path. Fetch already restricts policy names upstream; this is
+// defense-in-depth for the shared GitHub contents helper.
+func escapePathSegments(p string) string {
+	segs := strings.Split(p, "/")
+	for i, s := range segs {
+		segs[i] = url.PathEscape(s)
+	}
+	return strings.Join(segs, "/")
 }
