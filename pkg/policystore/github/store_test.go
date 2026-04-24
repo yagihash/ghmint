@@ -268,15 +268,37 @@ func TestGetFileContent_LimitReader(t *testing.T) {
 
 // --- Cache behavior ---
 
+// countingSigner wraps a jwtSigner and records how many times SignRS256 is
+// invoked, letting tests assert KMS round-trip counts.
+type countingSigner struct {
+	inner jwtSigner
+	mu    sync.Mutex
+	count int
+}
+
+func (s *countingSigner) SignRS256(ctx context.Context, data []byte) ([]byte, error) {
+	s.mu.Lock()
+	s.count++
+	s.mu.Unlock()
+	return s.inner.SignRS256(ctx, data)
+}
+
+func (s *countingSigner) Count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.count
+}
+
 // TestFetch_Caches ensures that repeated Fetch calls hit the GitHub contents
-// API at most once per policy per TTL window. It guards against regressions
-// that would reintroduce per-request rate limit pressure.
+// API (and the signer) at most once per policy per TTL window. It guards
+// against regressions that would reintroduce per-request rate-limit pressure
+// or redundant KMS signing round-trips.
 func TestFetch_Caches(t *testing.T) {
 	var (
-		mu                sync.Mutex
-		installHits       int
-		tokenHits         int
-		contentsHits      int
+		mu           sync.Mutex
+		installHits  int
+		tokenHits    int
+		contentsHits int
 	)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -308,7 +330,11 @@ func TestFetch_Caches(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	store := newTestStore(t, srv)
+	u, _ := url.Parse(srv.URL)
+	signer := &countingSigner{inner: &testSigner{key: mustKey(t)}}
+	httpClient := &http.Client{Transport: &redirectTransport{target: u}}
+	store := NewRepoPolicyStore("test-app", signer, WithHTTPClient(httpClient))
+
 	for range 3 {
 		if _, err := store.Fetch(context.Background(), "org/repo", "policy"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -325,6 +351,12 @@ func TestFetch_Caches(t *testing.T) {
 	}
 	if contentsHits != 1 {
 		t.Errorf("expected 1 contents request (rest served from cache), got %d", contentsHits)
+	}
+	// Cold cache requires one JWT (shared across installation-id +
+	// installation-token); subsequent Fetches serve from the cached access
+	// token and must not re-sign.
+	if n := signer.Count(); n != 1 {
+		t.Errorf("expected 1 JWT signing across all Fetches, got %d", n)
 	}
 }
 

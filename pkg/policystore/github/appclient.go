@@ -130,18 +130,21 @@ func (c *appClient) installationToken(ctx context.Context, jwt string, installat
 }
 
 // installationTokenForOwner returns a cached installation token for owner,
-// refetching the installation id and/or access token as needed.
+// refetching the installation id and/or access token as needed. A single
+// signed JWT is reused across the installation-id and access-token calls
+// to avoid a second KMS signing round-trip on cache miss.
 func (c *appClient) installationTokenForOwner(ctx context.Context, owner string) (string, error) {
 	if tok, ok := c.cache.getInstallToken(owner); ok {
 		return tok, nil
 	}
 
+	jwt, err := c.signJWT(ctx)
+	if err != nil {
+		return "", fmt.Errorf("create jwt: %w", err)
+	}
+
 	id, ok := c.cache.getInstallID(owner)
 	if !ok {
-		jwt, err := c.signJWT(ctx)
-		if err != nil {
-			return "", fmt.Errorf("create jwt: %w", err)
-		}
 		id, err = c.installationID(ctx, jwt, owner)
 		if err != nil {
 			return "", fmt.Errorf("get installation id: %w", err)
@@ -149,10 +152,6 @@ func (c *appClient) installationTokenForOwner(ctx context.Context, owner string)
 		c.cache.setInstallID(owner, id)
 	}
 
-	jwt, err := c.signJWT(ctx)
-	if err != nil {
-		return "", fmt.Errorf("create jwt: %w", err)
-	}
 	token, expiresAt, err := c.installationToken(ctx, jwt, id)
 	if err != nil {
 		return "", fmt.Errorf("get installation token: %w", err)
