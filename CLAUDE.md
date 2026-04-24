@@ -63,12 +63,28 @@ main.go が組み立てる実装:
 
 ### pkg/installation のキャッシュ設計
 
-| エントリ | TTL |
-|---|---|
-| installation ID（owner → int64） | 60 分 |
-| installation token（owner → string） | `expires_at` - 5 分 |
+| エントリ | キャッシュキー | TTL | 用途 |
+|---|---|---|---|
+| installation ID | `owner` | 60 分 | GitHub App installation の数値 ID |
+| plain token | `owner` | `expires_at` - 5 分 | policystore・webhook 用の汎用 API トークン |
+| policy content | `repo:path` | 60 秒 | Rego ファイルのバイト列（`pkg/policystore/github` が管理） |
 
 コールドキャッシュ時も JWT 署名（KMS 呼び出し）は1回のみ（installation ID 取得とトークン発行で同一 JWT を再利用）。
+
+#### ユーザー向けトークン発行（`IssueToken`）はキャッシュしない
+
+`/token` エンドポイントで最終的にユーザーへ返す Installation Access Token（`IssueToken` が発行するもの）は **キャッシュされない**。呼び出しのたびに GitHub API を叩いて新しいトークンを取得する。
+
+これは、ユーザーに返すトークンの `permissions` と `repositories` がリクエストごとの Rego 評価結果に基づくため、同一の結果をキャッシュして別リクエストに流用することが正しくないからである。
+
+#### 異なるコンテキスト間でのキャッシュ悪用は不可
+
+plain token（`TokenForOwner`）のキャッシュは `owner` キーで共有されるが、これはポリシーファイルの取得（policystore）や check run の作成（webhook）など **App 自身の内部操作にのみ使う**。ユーザーには返さない。
+
+ユーザー A と B が同じ org に対してリクエストした場合:
+- plain token（ポリシーファイル取得用）→ **共有** される（問題なし。App レベルの読み取りであり、ユーザーのアイデンティティと無関係）
+- Rego ポリシー評価 → **共有されない**（各リクエストの OIDC クレームで独立して評価）
+- ユーザーへ返す permissioned token → **共有されない**（毎回 GitHub API を叩いて発行）
 
 ## App API
 
