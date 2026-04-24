@@ -22,7 +22,7 @@ jobs:
       - name: Test Policy ${{ matrix.num }}
         continue-on-error: true
         id: token
-        uses: yagihash/sts-action@0243739fb1c37f6f31ba9936af010a807a9dd644 # v0.0.1
+        uses: yagihash/ghmint-action@8940a701371c286c70f861d176e5a4570312c652 # v0.0.1
         with:
           scope: ${{ github.repository }}
           policy: test-policy-${{ matrix.num }}
