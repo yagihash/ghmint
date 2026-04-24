@@ -57,7 +57,7 @@ func (l testLog) With(_ ...any) logger.Logger                      { return l }
 // --- helper ---
 
 func newTestServer(ov oidcVerifier, ti tokenIssuer, pv policyVerifier) *server {
-	return newServer(testLog{}, ov, ti, pv, Config{})
+	return newServer(testLog{}, ov, ti, pv, nil, Config{})
 }
 
 // --- tests ---

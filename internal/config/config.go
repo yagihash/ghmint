@@ -14,6 +14,7 @@ type Config struct {
 	Audience       string   `envconfig:"AUDIENCE" required:"true"`
 	AppID          string   `envconfig:"APP_ID" required:"true"`
 	AllowedIssuers []string `envconfig:"ALLOWED_ISSUERS" default:"https://token.actions.githubusercontent.com"`
+	WebhookSecret  string   `envconfig:"WEBHOOK_SECRET"`
 
 	KMSProjectID  string `envconfig:"KMS_PROJECT_ID" required:"true"`
 	KMSLocation   string `envconfig:"KMS_LOCATION" required:"true"`
