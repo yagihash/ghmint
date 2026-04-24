@@ -177,6 +177,7 @@ func TestGetFileContent_Non200(t *testing.T) {
 		appID:      "app",
 		signer:     &testSigner{key: mustKey(t)},
 		httpClient: &http.Client{Transport: &redirectTransport{target: u}},
+		cache:      newCache(),
 	}
 	if _, err := c.GetFileContent(context.Background(), "org/repo", "path/to/file.rego"); err == nil {
 		t.Fatal("expected error for 404 response")
@@ -206,6 +207,7 @@ func TestGetFileContent_UnexpectedEncoding(t *testing.T) {
 		appID:      "app",
 		signer:     &testSigner{key: mustKey(t)},
 		httpClient: &http.Client{Transport: &redirectTransport{target: u}},
+		cache:      newCache(),
 	}
 	if _, err := c.GetFileContent(context.Background(), "org/repo", "file.rego"); err == nil {
 		t.Fatal("expected error for unexpected encoding")
@@ -230,6 +232,7 @@ func TestGetFileContent_InstallationTokenFailed(t *testing.T) {
 		appID:      "app",
 		signer:     &testSigner{key: mustKey(t)},
 		httpClient: &http.Client{Transport: &redirectTransport{target: u}},
+		cache:      newCache(),
 	}
 	if _, err := c.GetFileContent(context.Background(), "org/repo", "file.rego"); err == nil {
 		t.Fatal("expected error for failed installation token")
@@ -261,6 +264,7 @@ func TestGetFileContent_LimitReader(t *testing.T) {
 		appID:      "app",
 		signer:     &testSigner{key: mustKey(t)},
 		httpClient: &http.Client{Transport: &redirectTransport{target: u}},
+		cache:      newCache(),
 	}
 	// Should not panic or OOM; error or truncated result are both acceptable.
 	c.GetFileContent(context.Background(), "org/repo", "file.rego")

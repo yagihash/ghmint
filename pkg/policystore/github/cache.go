@@ -42,9 +42,6 @@ func newCache() *cache {
 }
 
 func (c *cache) getInstallID(owner string) (int64, bool) {
-	if c == nil {
-		return 0, false
-	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	e, ok := c.installID[owner]
@@ -55,18 +52,12 @@ func (c *cache) getInstallID(owner string) (int64, bool) {
 }
 
 func (c *cache) setInstallID(owner string, id int64) {
-	if c == nil {
-		return
-	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.installID[owner] = idEntry{id: id, exp: time.Now().Add(installIDTTL)}
 }
 
 func (c *cache) getInstallToken(owner string) (string, bool) {
-	if c == nil {
-		return "", false
-	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	e, ok := c.installToken[owner]
@@ -77,18 +68,12 @@ func (c *cache) getInstallToken(owner string) (string, bool) {
 }
 
 func (c *cache) setInstallToken(owner, token string, githubExpiry time.Time) {
-	if c == nil {
-		return
-	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.installToken[owner] = tokenEntry{token: token, exp: githubExpiry.Add(-tokenSafetyMargin)}
 }
 
 func (c *cache) getPolicy(key string) ([]byte, bool) {
-	if c == nil {
-		return nil, false
-	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	e, ok := c.policy[key]
@@ -99,9 +84,6 @@ func (c *cache) getPolicy(key string) ([]byte, bool) {
 }
 
 func (c *cache) setPolicy(key string, content []byte) {
-	if c == nil {
-		return
-	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.policy[key] = policyEntry{content: content, exp: time.Now().Add(policyTTL)}
