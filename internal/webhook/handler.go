@@ -120,15 +120,18 @@ func (h *Handler) processValidation(ctx context.Context, log logger.Logger, payl
 		return fmt.Errorf("get installation token: %w", err)
 	}
 
+	files, err := h.gh.listPRFiles(ctx, token, owner, repo, prNumber)
+	if err != nil {
+		return fmt.Errorf("list pr files: %w", err)
+	}
+	if len(files) == 0 {
+		log.InfoContext(ctx, "no rego policy files changed, skipping check run")
+		return nil
+	}
+
 	checkRunID, err := h.gh.createCheckRun(ctx, token, owner, repo, headSHA)
 	if err != nil {
 		return fmt.Errorf("create check run: %w", err)
-	}
-
-	files, err := h.gh.listPRFiles(ctx, token, owner, repo, prNumber)
-	if err != nil {
-		_ = h.gh.updateCheckRun(ctx, token, owner, repo, checkRunID, "failure", nil, "Failed to list PR files.")
-		return fmt.Errorf("list pr files: %w", err)
 	}
 
 	var allAnnotations []annotation
@@ -184,9 +187,7 @@ func (h *Handler) processValidation(ctx context.Context, log logger.Logger, payl
 
 	conclusion := "success"
 	summary := fmt.Sprintf("Validated %d policy file(s). No issues found.", len(files))
-	if len(files) == 0 {
-		summary = "No Rego policy files changed in this PR."
-	} else if errCount > 0 {
+	if errCount > 0 {
 		conclusion = "failure"
 		summary = fmt.Sprintf("Validated %d policy file(s). Found %d error(s).", len(files), errCount)
 	}
