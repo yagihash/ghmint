@@ -202,11 +202,11 @@ See [`pkg/app`](./pkg/app), [`pkg/signer`](./pkg/signer), [`pkg/verifier`](./pkg
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md).
+Pull requests and issues are welcome. Please open a [GitHub Issue](https://github.com/yagihash/ghmint/issues) for bugs or feature requests.
 
 ## Security
 
-To report a vulnerability, please use [GitHub Private Security Advisories](https://github.com/yagihash/ghmint/security/advisories/new). See [SECURITY.md](./SECURITY.md) for details.
+To report a vulnerability, please use [GitHub Private Security Advisories](https://github.com/yagihash/ghmint/security/advisories/new).
 
 ## License
 
