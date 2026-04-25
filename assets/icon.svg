@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="ghmint">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#EAF7F0"/>
+      <stop offset="100%" stop-color="#C7E8D5"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0%" stop-color="#5BD89A"/>
+      <stop offset="55%" stop-color="#2EAD6E"/>
+      <stop offset="100%" stop-color="#1B7A4D"/>
+    </linearGradient>
+    <clipPath id="leafShape">
+      <path d="M 128 30 C 220 52, 220 200, 128 224 C 36 200, 36 52, 128 30 Z"/>
+    </clipPath>
+    <mask id="keyhole">
+      <rect width="256" height="256" fill="white"/>
+      <circle cx="128" cy="118" r="14" fill="black"/>
+      <path d="M 120 118 L 116 168 Q 128 174 140 168 L 136 118 Z" fill="black"/>
+    </mask>
+  </defs>
+
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+
+  <g mask="url(#keyhole)">
+    <g clip-path="url(#leafShape)">
+      <path d="M 128 30 C 220 52, 220 200, 128 224 C 36 200, 36 52, 128 30 Z" fill="url(#leaf)"/>
+
+      <path d="M 128 32 L 128 222" stroke="#0E5C36" stroke-width="2.5" stroke-linecap="round" opacity="0.5" fill="none"/>
+
+      <path d="M 128 72 Q 96 86 64 96"  stroke="#0E5C36" stroke-width="1.8" fill="none" opacity="0.45"/>
+      <path d="M 128 72 Q 160 86 192 96" stroke="#0E5C36" stroke-width="1.8" fill="none" opacity="0.45"/>
+      <path d="M 128 128 Q 90 142 50 148"  stroke="#0E5C36" stroke-width="1.8" fill="none" opacity="0.45"/>
+      <path d="M 128 128 Q 166 142 206 148" stroke="#0E5C36" stroke-width="1.8" fill="none" opacity="0.45"/>
+      <path d="M 128 182 Q 102 178 84 168"  stroke="#0E5C36" stroke-width="1.8" fill="none" opacity="0.45"/>
+      <path d="M 128 182 Q 154 178 172 168" stroke="#0E5C36" stroke-width="1.8" fill="none" opacity="0.45"/>
+    </g>
+  </g>
+
+  <path d="M 128 224 Q 130 232 134 240" stroke="#1B7A4D" stroke-width="3" stroke-linecap="round" fill="none"/>
+</svg>
