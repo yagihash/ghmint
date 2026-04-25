@@ -4,5 +4,6 @@
     "config:recommended",
     "docker:pinDigests",
     "helpers:pinGitHubActionDigests"
-  ]
+  ],
+  "minimumReleaseAge": "7 days"
 }
