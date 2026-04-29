@@ -89,7 +89,10 @@ func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {
 		r.Context(),
 		"successfully issued token",
 		"subject", claims.Raw["sub"],
+		"issuer", claims.Raw["iss"],
 		"hashed_token", base64.StdEncoding.EncodeToString(h[:]),
+		"permissions", result.Permissions,
+		"repositories", result.Repositories,
 	)
 
 	w.Header().Set("Content-Type", "application/json")
