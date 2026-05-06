@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"time"
 
+	minioidc "github.com/yagihash/ghmint/internal/oidc"
 	"github.com/yagihash/ghmint/pkg/installation"
 	"github.com/yagihash/ghmint/pkg/logger"
-	minioidc "github.com/yagihash/ghmint/internal/oidc"
 )
 
 const (
@@ -119,7 +119,7 @@ func (s *server) logMiddleware(next http.Handler) http.Handler {
 		start := time.Now()
 		rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rw, r)
-		s.logger.InfoContext(ctx, "request",
+		s.logger.DebugContext(ctx, "request",
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", rw.status,
