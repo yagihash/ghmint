@@ -19,14 +19,17 @@ const maxWebhookBodyBytes = 10 * 1024 * 1024
 
 // Handler handles GitHub webhook events and validates Rego policy files via GitHub Checks API.
 type Handler struct {
+	ctx           context.Context
 	webhookSecret string
 	logger        logger.Logger
 	gh            *githubClient
 }
 
 // NewHandler creates a Handler using the given installation.Client for GitHub App authentication.
-func NewHandler(client *installation.Client, webhookSecret string, log logger.Logger) *Handler {
+// ctx controls the lifetime of background goroutines spawned by the handler; cancel it on shutdown.
+func NewHandler(ctx context.Context, client *installation.Client, webhookSecret string, log logger.Logger) *Handler {
 	return &Handler{
+		ctx:           ctx,
 		webhookSecret: webhookSecret,
 		logger:        log,
 		gh:            newGithubClient(client),
@@ -81,7 +84,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusAccepted)
 
-	ctx := context.Background()
+	ctx := h.ctx
 	log := h.logger.With(
 		"owner", payload.Repository.Owner.Login,
 		"repo", payload.Repository.Name,

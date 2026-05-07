@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
+	"regexp"
 	"time"
 
 	minioidc "github.com/yagihash/ghmint/internal/oidc"
@@ -20,6 +21,9 @@ const (
 	defaultMaxRequestBodyBytes = 1 * 1024 * 1024
 	maxRequestIDLength         = 128
 )
+
+// validRequestID accepts only alphanumeric characters, hyphens, and underscores to prevent log injection.
+var validRequestID = regexp.MustCompile(`^[a-zA-Z0-9\-_]+$`)
 
 type oidcVerifier interface {
 	Verify(ctx context.Context, rawToken string) (minioidc.Claims, error)
@@ -110,7 +114,7 @@ func generateRequestID() string {
 func (s *server) logMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID := r.Header.Get("X-Request-ID")
-		if requestID == "" || len(requestID) > maxRequestIDLength {
+		if requestID == "" || len(requestID) > maxRequestIDLength || !validRequestID.MatchString(requestID) {
 			requestID = generateRequestID()
 		}
 		ctx := logger.WithRequestID(r.Context(), requestID)
