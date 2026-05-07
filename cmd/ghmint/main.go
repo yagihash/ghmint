@@ -39,7 +39,8 @@ func realMain() int {
 	}
 
 	log := cloudlogging.New(cfg.Debug)
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	kmsSigner, err := kmssigner.NewKMSSigner(ctx, cfg.KMSKeyName())
 	if err != nil {
@@ -59,7 +60,7 @@ func realMain() int {
 
 	var wh *webhook.Handler
 	if cfg.WebhookSecret != "" {
-		wh = webhook.NewHandler(installClient, cfg.WebhookSecret, log)
+		wh = webhook.NewHandler(ctx, installClient, cfg.WebhookSecret, log)
 	}
 
 	sts, err := app.New(app.Config{
@@ -81,10 +82,11 @@ func realMain() int {
 	go func() {
 		sig := <-sigCh
 		log.InfoContext(ctx, "received signal, shutting down", "signal", sig.String())
-		shutdownCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
+		cancel() // stop webhook background goroutines
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer shutdownCancel()
 		if err := sts.Shutdown(shutdownCtx); err != nil {
-			log.ErrorContext(ctx, "shutdown error", "error", err)
+			log.ErrorContext(shutdownCtx, "shutdown error", "error", err)
 		}
 	}()
 

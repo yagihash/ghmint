@@ -10,6 +10,7 @@ import (
 
 	"github.com/open-policy-agent/opa/v1/ast"
 	oparego "github.com/open-policy-agent/opa/v1/rego"
+	"github.com/yagihash/ghmint/internal/regocaps"
 )
 
 // ValidationResult holds errors and warnings from static Rego validation.
@@ -26,54 +27,6 @@ func (r ValidationResult) hasErrors() bool {
 type Finding struct {
 	Line    int
 	Message string
-}
-
-// allowedBuiltins mirrors pkg/verifier/rego to apply the same safe-capabilities policy
-// when evaluating policies for validation.
-var allowedBuiltins = map[string]bool{
-	"eq": true, "neq": true, "lt": true, "gt": true, "lte": true, "gte": true,
-	"plus": true, "minus": true, "mul": true, "div": true, "rem": true,
-	"abs": true, "ceil": true, "floor": true, "round": true, "numbers.range": true,
-	"count": true, "sum": true, "product": true, "max": true, "min": true,
-	"all": true, "any": true, "sort": true,
-	"concat": true, "contains": true, "endswith": true, "startswith": true,
-	"lower": true, "upper": true, "split": true, "trim": true,
-	"trim_left": true, "trim_right": true, "trim_prefix": true, "trim_suffix": true,
-	"replace": true, "indexof": true, "indexof_n": true,
-	"substring": true, "format_int": true, "sprintf": true,
-	"strings.count": true, "strings.replace_n": true, "strings.reverse": true,
-	"strings.any_prefix_match": true, "strings.any_suffix_match": true,
-	"regex.match": true, "regex.is_valid": true, "regex.split": true,
-	"regex.find_n": true, "regex.replace": true, "regex.template_match": true,
-	"glob.match": true, "glob.quote_meta": true,
-	"array.concat": true, "array.slice": true, "array.reverse": true,
-	"intersection": true, "union": true, "difference": true,
-	"object.get": true, "object.keys": true, "object.values": true,
-	"object.union": true, "object.union_n": true,
-	"object.remove": true, "object.filter": true, "object.subset": true,
-	"json.marshal": true, "json.unmarshal": true, "json.is_valid": true,
-	"json.filter": true, "json.remove": true,
-	"base64.encode": true, "base64.decode": true,
-	"base64url.encode": true, "base64url.decode": true,
-	"is_number": true, "is_string": true, "is_boolean": true,
-	"is_array": true, "is_set": true, "is_object": true, "is_null": true,
-	"type_name": true,
-	"time.now_ns": true, "time.parse_rfc3339_ns": true, "time.parse_ns": true,
-	"time.format": true, "time.date": true, "time.clock": true,
-	"time.weekday": true, "time.add_date": true, "time.diff": true,
-	"assign": true, "unify": true, "equal": true, "internal.print": true,
-}
-
-func safeCapabilities() *ast.Capabilities {
-	caps := ast.CapabilitiesForThisVersion()
-	safe := caps.Builtins[:0]
-	for _, b := range caps.Builtins {
-		if allowedBuiltins[b.Name] {
-			safe = append(safe, b)
-		}
-	}
-	caps.Builtins = safe
-	return caps
 }
 
 // validateRegoFile performs static validation of a Rego policy file.
@@ -143,11 +96,15 @@ func validatePermissionsKV(filename string, content []byte, permLine int, result
 	evalCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	// Evaluate with empty input to extract the static permissions object.
+	// If permissions depends on input (e.g. a conditional rule), evaluation returns undefined
+	// and key-value validation is skipped with a warning. This is a known limitation of static
+	// analysis: the runtime Rego evaluator in pkg/verifier/rego is the authoritative check.
 	rs, err := oparego.New(
 		oparego.Query("data.ghmint.permissions"),
 		oparego.Module(filename, string(content)),
 		oparego.Input(map[string]interface{}{}),
-		oparego.Capabilities(safeCapabilities()),
+		oparego.Capabilities(regocaps.SafeCapabilities()),
 	).Eval(evalCtx)
 	if err != nil {
 		result.Warnings = append(result.Warnings, Finding{
@@ -159,7 +116,7 @@ func validatePermissionsKV(filename string, content []byte, permLine int, result
 	if len(rs) == 0 || len(rs[0].Expressions) == 0 {
 		result.Warnings = append(result.Warnings, Finding{
 			Line:    permLine,
-			Message: "permissions could not be statically evaluated; key-value validation skipped",
+			Message: "permissions could not be statically evaluated (possibly input-dependent); key-value validation skipped",
 		})
 		return result
 	}
