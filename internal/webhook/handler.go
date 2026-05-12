@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/yagihash/ghmint/pkg/installation"
 	"github.com/yagihash/ghmint/pkg/logger"
@@ -23,6 +24,7 @@ type Handler struct {
 	webhookSecret string
 	logger        logger.Logger
 	gh            *githubClient
+	wg            sync.WaitGroup
 }
 
 // NewHandler creates a Handler using the given installation.Client for GitHub App authentication.
@@ -90,11 +92,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"repo", payload.Repository.Name,
 		"pr", payload.Number,
 	)
-	go func() {
+	h.wg.Go(func() {
 		if err := h.processValidation(ctx, log, payload); err != nil {
 			log.ErrorContext(ctx, "webhook processing failed", "error", err)
 		}
-	}()
+	})
+}
+
+// Wait blocks until all in-flight background validations have completed.
+// Call this after canceling the context passed to NewHandler to ensure
+// no goroutines are left pending before the process exits.
+func (h *Handler) Wait() {
+	h.wg.Wait()
 }
 
 func (h *Handler) verifySignature(body []byte, sig string) bool {

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"sync"
 
 	kms "cloud.google.com/go/kms/apiv1"
 	"cloud.google.com/go/kms/apiv1/kmspb"
@@ -14,6 +15,7 @@ import (
 var ErrSignerClosed = errors.New("kms signer: closed")
 
 type KMSSigner struct {
+	mu      sync.Mutex
 	client  *kms.KeyManagementClient
 	keyName string
 }
@@ -28,7 +30,10 @@ func NewKMSSigner(ctx context.Context, keyName string) (*KMSSigner, error) {
 
 // Close releases resources held by the underlying KMS client. Safe to call
 // more than once; subsequent calls after a successful close return nil.
+// Safe to call concurrently with SignRS256.
 func (s *KMSSigner) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.client == nil {
 		return nil
 	}
@@ -38,11 +43,14 @@ func (s *KMSSigner) Close() error {
 }
 
 func (s *KMSSigner) SignRS256(ctx context.Context, data []byte) ([]byte, error) {
-	if s.client == nil {
+	s.mu.Lock()
+	client := s.client
+	s.mu.Unlock()
+	if client == nil {
 		return nil, ErrSignerClosed
 	}
 	h := sha256.Sum256(data)
-	resp, err := s.client.AsymmetricSign(ctx, &kmspb.AsymmetricSignRequest{
+	resp, err := client.AsymmetricSign(ctx, &kmspb.AsymmetricSignRequest{
 		Name: s.keyName,
 		Digest: &kmspb.Digest{
 			Digest: &kmspb.Digest_Sha256{

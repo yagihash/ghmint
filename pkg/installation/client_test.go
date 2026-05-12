@@ -164,16 +164,55 @@ func TestIssueToken_RepoNamesStripped(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]any{
 			"token":      "ghs_x",
 			"expires_at": time.Now().Add(time.Hour).Format(time.RFC3339),
+			"repositories": []map[string]any{
+				{"full_name": "myorg/repo-a"},
+				{"full_name": "myorg/repo-b"},
+			},
 		})
 	}))
 	defer srv.Close()
 
 	c := newTestClient(t, srv)
-	c.IssueToken(context.Background(), "myorg", nil, []string{"myorg/repo-a", "myorg/repo-b"})
+	result, err := c.IssueToken(context.Background(), "myorg", nil, []string{"myorg/repo-a", "myorg/repo-b"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 
 	repos, _ := capturedBody["repositories"].([]any)
 	if len(repos) != 2 || repos[0] != "repo-a" || repos[1] != "repo-b" {
 		t.Errorf("expected repositories=[repo-a repo-b] in request body, got %v", repos)
+	}
+
+	if len(result.Repositories) != 2 || result.Repositories[0] != "myorg/repo-a" || result.Repositories[1] != "myorg/repo-b" {
+		t.Errorf("expected result.Repositories=[myorg/repo-a myorg/repo-b], got %v", result.Repositories)
+	}
+}
+
+func TestIssueToken_MalformedRepository(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"id": 1})
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	_, err := c.IssueToken(context.Background(), "myorg", nil, []string{"repo-without-slash"})
+	if err == nil {
+		t.Fatal("expected error for repository without owner/repo format")
+	}
+}
+
+func TestIssueToken_MalformedRepositoryEmptyName(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"id": 1})
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	_, err := c.IssueToken(context.Background(), "myorg", nil, []string{"myorg/"})
+	if err == nil {
+		t.Fatal("expected error for repository with empty name")
 	}
 }
 
