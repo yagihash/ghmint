@@ -3,6 +3,7 @@ package kms
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 )
 
@@ -27,4 +28,24 @@ func TestSignRS256_AfterClose(t *testing.T) {
 	if !errors.Is(err, ErrSignerClosed) {
 		t.Errorf("expected ErrSignerClosed, got %v", err)
 	}
+}
+
+// TestSignRS256_ConcurrentClose verifies that concurrent Close and SignRS256
+// do not cause a data race. Run with -race to detect violations.
+func TestSignRS256_ConcurrentClose(t *testing.T) {
+	s := &KMSSigner{keyName: "projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1"}
+
+	var wg sync.WaitGroup
+	for range 100 {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			s.Close()
+		}()
+		go func() {
+			defer wg.Done()
+			s.SignRS256(context.Background(), []byte("data"))
+		}()
+	}
+	wg.Wait()
 }

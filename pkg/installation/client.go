@@ -95,6 +95,13 @@ func (c *Client) TokenForOwner(ctx context.Context, owner string) (string, error
 // permissions and repositories. Unlike TokenForOwner, results are not cached
 // because the token is specific to the requested permissions.
 func (c *Client) IssueToken(ctx context.Context, owner string, permissions map[string]string, repositories []string) (IssueResult, error) {
+	for _, r := range repositories {
+		_, name, found := strings.Cut(r, "/")
+		if !found || name == "" {
+			return IssueResult{}, fmt.Errorf("repository %q is not in owner/repo format", r)
+		}
+	}
+
 	jwt, err := c.signJWT(ctx)
 	if err != nil {
 		return IssueResult{}, fmt.Errorf("sign jwt: %w", err)
@@ -243,9 +250,12 @@ func (c *Client) issueToken(ctx context.Context, jwt string, installID int64, pe
 	}
 
 	var result struct {
-		Token       string            `json:"token"`
-		ExpiresAt   string            `json:"expires_at"`
-		Permissions map[string]string `json:"permissions"`
+		Token        string            `json:"token"`
+		ExpiresAt    string            `json:"expires_at"`
+		Permissions  map[string]string `json:"permissions"`
+		Repositories []struct {
+			FullName string `json:"full_name"`
+		} `json:"repositories"`
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBodyBytes)).Decode(&result); err != nil {
 		return IssueResult{}, fmt.Errorf("decode response: %w", err)
@@ -257,11 +267,15 @@ func (c *Client) issueToken(ctx context.Context, jwt string, installID int64, pe
 	if err != nil {
 		return IssueResult{}, fmt.Errorf("parse expires_at: %w", err)
 	}
+	var repos []string
+	for _, r := range result.Repositories {
+		repos = append(repos, r.FullName)
+	}
 	return IssueResult{
 		Token:        result.Token,
 		ExpiresAt:    expiresAt,
 		Permissions:  result.Permissions,
-		Repositories: repositories,
+		Repositories: repos,
 	}, nil
 }
 

@@ -97,6 +97,10 @@ func realMain() int {
 		return ExitError
 	}
 
+	if wh != nil {
+		wh.Wait()
+	}
+
 	log.InfoContext(ctx, "server stopped")
 	return ExitOK
 }
