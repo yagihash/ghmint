@@ -6,7 +6,7 @@ require (
 	cloud.google.com/go/kms v1.30.0
 	github.com/coreos/go-oidc/v3 v3.18.0
 	github.com/kelseyhightower/envconfig v1.4.0
-	github.com/open-policy-agent/opa v1.16.1
+	github.com/open-policy-agent/opa v1.16.2
 )
 
 require (
