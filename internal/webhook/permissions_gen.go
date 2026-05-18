@@ -11,6 +11,7 @@ var validPermissions = map[string][]string{
 	"artifact_metadata":                   {"read", "write"},
 	"attestations":                        {"read", "write"},
 	"checks":                              {"read", "write"},
+	"code_quality":                        {"read", "write"},
 	"codespaces":                          {"read", "write"},
 	"contents":                            {"read", "write"},
 	"custom_properties_for_organizations": {"read", "write"},
