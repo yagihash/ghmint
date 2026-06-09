@@ -8,14 +8,17 @@ on:
 
 jobs:
   changes:
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
+      actions: write
     outputs:
       workflows: ${{ steps.filter.outputs.workflows }}
     steps:
+      - uses: cicd-sensor/cicd-sensor-action@1935de498397aa7b9bf6ac7ca822ddb430a34843 # v0.0.31
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
@@ -35,13 +38,16 @@ jobs:
   ghalint:
     needs: changes
     if: needs.changes.outputs.workflows == 'true'
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
       attestations: read
+      actions: write
 
     steps:
+      - uses: cicd-sensor/cicd-sensor-action@1935de498397aa7b9bf6ac7ca822ddb430a34843 # v0.0.31
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
@@ -67,13 +73,16 @@ jobs:
   actionlint:
     needs: changes
     if: needs.changes.outputs.workflows == 'true'
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
       attestations: read
+      actions: write
 
     steps:
+      - uses: cicd-sensor/cicd-sensor-action@1935de498397aa7b9bf6ac7ca822ddb430a34843 # v0.0.31
+
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
