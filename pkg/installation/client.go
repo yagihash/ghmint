@@ -96,9 +96,15 @@ func (c *Client) TokenForOwner(ctx context.Context, owner string) (string, error
 // because the token is specific to the requested permissions.
 func (c *Client) IssueToken(ctx context.Context, owner string, permissions map[string]string, repositories []string) (IssueResult, error) {
 	for _, r := range repositories {
-		_, name, found := strings.Cut(r, "/")
+		repoOwner, name, found := strings.Cut(r, "/")
 		if !found || name == "" {
 			return IssueResult{}, fmt.Errorf("repository %q is not in owner/repo format", r)
+		}
+		// The token is scoped to owner's installation; a repository under a
+		// different owner cannot be granted here. Reject rather than silently
+		// dropping the owner and requesting the bare name against owner.
+		if repoOwner != owner {
+			return IssueResult{}, fmt.Errorf("repository %q owner does not match token owner %q", r, owner)
 		}
 	}
 

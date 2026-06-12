@@ -216,6 +216,20 @@ func TestIssueToken_MalformedRepositoryEmptyName(t *testing.T) {
 	}
 }
 
+func TestIssueToken_RepositoryOwnerMismatch(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"id": 1})
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	_, err := c.IssueToken(context.Background(), "myorg", nil, []string{"otherorg/repo"})
+	if err == nil {
+		t.Fatal("expected error for repository owner not matching token owner")
+	}
+}
+
 func TestTokenForOwner_Cached(t *testing.T) {
 	calls := 0
 	expiresAt := time.Now().Add(time.Hour).UTC().Truncate(time.Second)

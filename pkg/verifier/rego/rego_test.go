@@ -152,6 +152,22 @@ repositories := ["org/a"]`)}
 	}
 }
 
+func TestVerify_ReposOwnerMismatch(t *testing.T) {
+	store := &staticPolicyStore{content: policy(basePolicy + `
+repositories := ["other/a"]`)}
+	v := rego.New(store)
+	_, _, err := v.Verify(context.Background(), claims(issuer), "org", "policy")
+	assertDenialError(t, err)
+}
+
+func TestVerify_ReposOwnerMismatch_Mixed(t *testing.T) {
+	store := &staticPolicyStore{content: policy(basePolicy + `
+repositories := ["org/a", "other/b"]`)}
+	v := rego.New(store)
+	_, _, err := v.Verify(context.Background(), claims(issuer), "org", "policy")
+	assertDenialError(t, err)
+}
+
 func TestVerify_ReposDefinedWithOrgRepoScope(t *testing.T) {
 	store := &staticPolicyStore{content: policy(basePolicy + `
 repositories := ["org/a"]`)}
