@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"sync"
 
@@ -93,6 +94,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"pr", payload.Number,
 	)
 	h.wg.Go(func() {
+		// Validation parses and evaluates attacker-controlled Rego from the PR.
+		// Recover so a panic in the OPA parser/evaluator cannot take down the
+		// whole process (which also serves /token).
+		defer func() {
+			if r := recover(); r != nil {
+				log.ErrorContext(ctx, "webhook processing panicked", "panic", r, "stack", string(debug.Stack()))
+			}
+		}()
 		if err := h.processValidation(ctx, log, payload); err != nil {
 			log.ErrorContext(ctx, "webhook processing failed", "error", err)
 		}

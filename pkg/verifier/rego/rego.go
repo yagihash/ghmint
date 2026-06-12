@@ -94,7 +94,7 @@ func (v *RegoVerifier) Verify(ctx context.Context, claims map[string]interface{}
 		permissions[k] = s
 	}
 
-	_, _, scopeHasRepo := strings.Cut(scope, "/")
+	scopeOwner, _, scopeHasRepo := strings.Cut(scope, "/")
 	repoVal, reposExists := p["repositories"]
 
 	if scopeHasRepo && reposExists {
@@ -121,6 +121,12 @@ func (v *RegoVerifier) Verify(ctx context.Context, claims map[string]interface{}
 				org, name, found := strings.Cut(s, "/")
 				if !found || org == "" || name == "" {
 					return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("policy: repository %q is not in owner/repo format", s)}
+				}
+				// The issued token is always bound to the scope owner's installation,
+				// so every repository must belong to that owner. Reject mismatches
+				// instead of silently dropping the owner at issuance time.
+				if org != scopeOwner {
+					return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("policy: repository %q owner does not match scope owner %q", s, scopeOwner)}
 				}
 				repositories = append(repositories, s)
 			}
