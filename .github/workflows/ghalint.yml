@@ -13,7 +13,6 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
-      actions: write
     outputs:
       workflows: ${{ steps.filter.outputs.workflows }}
     steps:
@@ -43,7 +42,6 @@ jobs:
     permissions:
       contents: read
       attestations: read
-      actions: write
 
     steps:
       - uses: cicd-sensor/cicd-sensor-action@1935de498397aa7b9bf6ac7ca822ddb430a34843 # v0.0.31
@@ -78,7 +76,6 @@ jobs:
     permissions:
       contents: read
       attestations: read
-      actions: write
 
     steps:
       - uses: cicd-sensor/cicd-sensor-action@1935de498397aa7b9bf6ac7ca822ddb430a34843 # v0.0.31
