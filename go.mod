@@ -6,7 +6,8 @@ require (
 	cloud.google.com/go/kms v1.31.0
 	github.com/coreos/go-oidc/v3 v3.18.0
 	github.com/kelseyhightower/envconfig v1.4.0
-	github.com/open-policy-agent/opa v1.17.0
+	github.com/open-policy-agent/opa v1.17.1
+	google.golang.org/protobuf v1.36.11
 )
 
 require (
@@ -65,6 +66,5 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/grpc v1.81.0 // indirect
-	google.golang.org/protobuf v1.36.11 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
