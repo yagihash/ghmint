@@ -10,8 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
+      id-token: write
 
     steps:
       - uses: cicd-sensor/cicd-sensor-action@1935de498397aa7b9bf6ac7ca822ddb430a34843 # v0.0.31
@@ -27,9 +27,16 @@ jobs:
       - name: go generate
         run: go generate ./internal/webhook/...
 
+      - name: Get ghmint token
+        id: ghmint
+        uses: yagihash/ghmint-action@be57533eef7f69550d06f0c93eede5589158281a # v1.0.0
+        with:
+          scope: ${{ github.repository }}
+          policy: update-permissions
+
       - name: Setup git
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.ghmint.outputs.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -37,7 +44,7 @@ jobs:
 
       - name: Create PR if changed
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.ghmint.outputs.token }}
         run: |
           if ! git diff --quiet; then
             BRANCH="chore/update-permissions-$(date +%Y%m%d)"
@@ -46,12 +53,15 @@ jobs:
             git commit -m "chore: update GitHub App permissions from OpenAPI spec"
             git push origin "$BRANCH" --force
 
-            PR_URL=$(gh pr create \
+            if PR_URL=$(gh pr create \
               --title "chore: update GitHub App permissions from OpenAPI spec" \
               --body $'Regenerated `internal/webhook/permissions_gen.go` from the GitHub REST API OpenAPI spec.\n\n- Source: `components/schemas/app-permissions`\n- Generator: `tools/gen-permissions`' \
               --base main \
-              --head "$BRANCH" 2>&1 \
-              || gh pr view "$BRANCH" --json url --jq '.url')
+              --head "$BRANCH"); then
+              :
+            else
+              PR_URL=$(gh pr view "$BRANCH" --json url --jq '.url')
+            fi
 
             {
               echo "## Update GitHub App permissions"
