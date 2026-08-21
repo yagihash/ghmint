@@ -24,7 +24,7 @@ func New(store policystore.PolicyStore) *RegoVerifier {
 	return &RegoVerifier{store: store}
 }
 
-func (v *RegoVerifier) Verify(ctx context.Context, claims map[string]interface{}, scope, policy string) (map[string]string, []string, error) {
+func (v *RegoVerifier) Verify(ctx context.Context, claims map[string]any, scope, policy string) (map[string]string, []string, error) {
 	content, err := v.store.Fetch(ctx, scope, policy)
 	if err != nil {
 		return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("fetch policy: %v", err)}
@@ -47,7 +47,7 @@ func (v *RegoVerifier) Verify(ctx context.Context, claims map[string]interface{}
 	if len(rs) == 0 || len(rs[0].Expressions) == 0 {
 		return nil, nil, &verifier.DenialError{Reason: "policy: data.ghmint is undefined (check package declaration)"}
 	}
-	p, ok := rs[0].Expressions[0].Value.(map[string]interface{})
+	p, ok := rs[0].Expressions[0].Value.(map[string]any)
 	if !ok {
 		return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("policy: data.ghmint has unexpected type %T", rs[0].Expressions[0].Value)}
 	}
@@ -81,7 +81,7 @@ func (v *RegoVerifier) Verify(ctx context.Context, claims map[string]interface{}
 	if !permExists {
 		return nil, nil, &verifier.DenialError{Reason: "policy: permissions is undefined"}
 	}
-	permRaw, ok := permVal.(map[string]interface{})
+	permRaw, ok := permVal.(map[string]any)
 	if !ok {
 		return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("policy: permissions has unexpected type %T", permVal)}
 	}
@@ -105,7 +105,7 @@ func (v *RegoVerifier) Verify(ctx context.Context, claims map[string]interface{}
 	if !reposExists {
 		repositories = defaultRepositories(scope)
 	} else {
-		rawRepos, ok := repoVal.([]interface{})
+		rawRepos, ok := repoVal.([]any)
 		if !ok {
 			return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("policy: repositories has unexpected type %T", repoVal)}
 		}

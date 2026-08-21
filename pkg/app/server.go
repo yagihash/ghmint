@@ -2,11 +2,10 @@ package app
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"net/http"
 	"regexp"
 	"time"
+	"uuid"
 
 	minioidc "github.com/yagihash/ghmint/internal/oidc"
 	"github.com/yagihash/ghmint/pkg/installation"
@@ -34,7 +33,7 @@ type tokenIssuer interface {
 }
 
 type policyVerifier interface {
-	Verify(ctx context.Context, claims map[string]interface{}, scope, policy string) (permissions map[string]string, repositories []string, err error)
+	Verify(ctx context.Context, claims map[string]any, scope, policy string) (permissions map[string]string, repositories []string, err error)
 }
 
 type server struct {
@@ -106,9 +105,7 @@ func (s *server) Shutdown(ctx context.Context) error {
 }
 
 func generateRequestID() string {
-	b := make([]byte, 16)
-	_, _ = rand.Read(b)
-	return hex.EncodeToString(b)
+	return uuid.New().String()
 }
 
 func (s *server) logMiddleware(next http.Handler) http.Handler {

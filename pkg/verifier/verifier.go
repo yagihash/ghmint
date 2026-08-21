@@ -13,5 +13,5 @@ func (e *DenialError) Error() string {
 }
 
 type Verifier interface {
-	Verify(ctx context.Context, claims map[string]interface{}, scope, policy string) (permissions map[string]string, repositories []string, err error)
+	Verify(ctx context.Context, claims map[string]any, scope, policy string) (permissions map[string]string, repositories []string, err error)
 }

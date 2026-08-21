@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 
@@ -54,7 +55,7 @@ type postVerifyClaims struct {
 	RepositoryOwner string `json:"repository_owner"`
 }
 
-type rawClaims map[string]interface{}
+type rawClaims map[string]any
 
 func validateIssuerURL(iss string) error {
 	u, err := url.Parse(iss)
@@ -126,7 +127,7 @@ func (v *Verifier) provider(ctx context.Context, issuer string) (*coreidoidc.Pro
 type Claims struct {
 	Repository      string
 	RepositoryOwner string
-	Raw             map[string]interface{}
+	Raw             map[string]any
 }
 
 func (v *Verifier) Verify(ctx context.Context, rawToken string) (Claims, error) {
@@ -144,13 +145,7 @@ func (v *Verifier) Verify(ctx context.Context, rawToken string) (Claims, error) 
 	}
 
 	if len(v.allowedIssuers) > 0 {
-		allowed := false
-		for _, iss := range v.allowedIssuers {
-			if iss == pre.Iss {
-				allowed = true
-				break
-			}
-		}
+		allowed := slices.Contains(v.allowedIssuers, pre.Iss)
 		if !allowed {
 			return Claims{}, fmt.Errorf("issuer %q is not in the allowed issuers list", pre.Iss)
 		}

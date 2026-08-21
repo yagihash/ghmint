@@ -202,7 +202,7 @@ Check Run 名: `ghmint / policy validation`
 
 ```go
 type Verifier interface {
-    Verify(ctx context.Context, claims map[string]interface{}, scope, policy string) (permissions map[string]string, repositories []string, err error)
+    Verify(ctx context.Context, claims map[string]any, scope, policy string) (permissions map[string]string, repositories []string, err error)
 }
 ```
 

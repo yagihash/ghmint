@@ -20,8 +20,8 @@ func (s *staticPolicyStore) Fetch(_ context.Context, _, _ string) ([]byte, error
 
 const issuer = "https://a.example"
 
-func claims(iss string) map[string]interface{} {
-	return map[string]interface{}{"iss": iss}
+func claims(iss string) map[string]any {
+	return map[string]any{"iss": iss}
 }
 
 func policy(body string) []byte {
@@ -30,8 +30,7 @@ func policy(body string) []byte {
 
 func assertDenialError(t *testing.T, err error) {
 	t.Helper()
-	var de *verifier.DenialError
-	if !errors.As(err, &de) {
+	if _, ok := errors.AsType[*verifier.DenialError](err); !ok {
 		t.Fatalf("expected *verifier.DenialError, got %T: %v", err, err)
 	}
 }
@@ -190,7 +189,7 @@ allow if {
 	input.sub = "repo:org/app:refs/heads/main"
 }`)}
 	v := rego.New(store)
-	cl := map[string]interface{}{"iss": issuer, "sub": "repo:org/app:refs/heads/main"}
+	cl := map[string]any{"iss": issuer, "sub": "repo:org/app:refs/heads/main"}
 	_, _, err := v.Verify(context.Background(), cl, "org/repo", "policy")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
