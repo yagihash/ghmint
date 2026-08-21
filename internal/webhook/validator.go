@@ -103,7 +103,7 @@ func validatePermissionsKV(filename string, content []byte, permLine int, result
 	rs, err := oparego.New(
 		oparego.Query("data.ghmint.permissions"),
 		oparego.Module(filename, string(content)),
-		oparego.Input(map[string]interface{}{}),
+		oparego.Input(map[string]any{}),
 		oparego.Capabilities(regocaps.SafeCapabilities()),
 	).Eval(evalCtx)
 	if err != nil {
@@ -121,7 +121,7 @@ func validatePermissionsKV(filename string, content []byte, permLine int, result
 		return result
 	}
 
-	perms, ok := rs[0].Expressions[0].Value.(map[string]interface{})
+	perms, ok := rs[0].Expressions[0].Value.(map[string]any)
 	if !ok {
 		result.Errors = append(result.Errors, Finding{
 			Line:    permLine,

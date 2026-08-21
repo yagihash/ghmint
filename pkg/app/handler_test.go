@@ -42,7 +42,7 @@ type mockPolicyVerifier struct {
 	err         error
 }
 
-func (m *mockPolicyVerifier) Verify(_ context.Context, _ map[string]interface{}, _, _ string) (map[string]string, []string, error) {
+func (m *mockPolicyVerifier) Verify(_ context.Context, _ map[string]any, _, _ string) (map[string]string, []string, error) {
 	return m.permissions, m.repos, m.err
 }
 
@@ -149,7 +149,7 @@ func TestHandleToken_InvalidOIDCToken(t *testing.T) {
 }
 
 func TestHandleToken_PolicyDenialError(t *testing.T) {
-	ov := &mockOIDCVerifier{claims: minioidc.Claims{Raw: map[string]interface{}{"iss": "https://example.com"}}}
+	ov := &mockOIDCVerifier{claims: minioidc.Claims{Raw: map[string]any{"iss": "https://example.com"}}}
 	pv := &mockPolicyVerifier{err: &verifier.DenialError{Reason: "denied"}}
 	srv := newTestServer(ov, nil, pv)
 	req := httptest.NewRequest(http.MethodPost, "/token", tokenRequestBody("org/repo", "pol"))
@@ -165,7 +165,7 @@ func TestHandleToken_PolicyDenialError(t *testing.T) {
 }
 
 func TestHandleToken_PolicyInternalError(t *testing.T) {
-	ov := &mockOIDCVerifier{claims: minioidc.Claims{Raw: map[string]interface{}{"iss": "https://example.com"}}}
+	ov := &mockOIDCVerifier{claims: minioidc.Claims{Raw: map[string]any{"iss": "https://example.com"}}}
 	pv := &mockPolicyVerifier{err: errors.New("internal policy error")}
 	srv := newTestServer(ov, nil, pv)
 	req := httptest.NewRequest(http.MethodPost, "/token", tokenRequestBody("org/repo", "pol"))
@@ -181,7 +181,7 @@ func TestHandleToken_PolicyInternalError(t *testing.T) {
 }
 
 func TestHandleToken_TokenIssueError(t *testing.T) {
-	ov := &mockOIDCVerifier{claims: minioidc.Claims{Raw: map[string]interface{}{"iss": "https://example.com"}}}
+	ov := &mockOIDCVerifier{claims: minioidc.Claims{Raw: map[string]any{"iss": "https://example.com"}}}
 	pv := &mockPolicyVerifier{permissions: map[string]string{"contents": "read"}, repos: []string{"org/repo"}}
 	ti := &mockTokenIssuer{err: errors.New("github api error")}
 	srv := newTestServer(ov, ti, pv)
@@ -199,7 +199,7 @@ func TestHandleToken_TokenIssueError(t *testing.T) {
 
 func TestHandleToken_Success(t *testing.T) {
 	expiresAt := time.Date(2026, 4, 13, 12, 0, 0, 0, time.UTC)
-	ov := &mockOIDCVerifier{claims: minioidc.Claims{Raw: map[string]interface{}{"iss": "https://example.com"}}}
+	ov := &mockOIDCVerifier{claims: minioidc.Claims{Raw: map[string]any{"iss": "https://example.com"}}}
 	pv := &mockPolicyVerifier{
 		permissions: map[string]string{"contents": "read"},
 		repos:       []string{"org/repo"},

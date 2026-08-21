@@ -197,10 +197,7 @@ func (c *githubClient) updateCheckRun(ctx context.Context, token, owner, repo st
 	}
 
 	for i := 0; i < len(annotations); i += annotationsPerRequest {
-		end := i + annotationsPerRequest
-		if end > len(annotations) {
-			end = len(annotations)
-		}
+		end := min(i+annotationsPerRequest, len(annotations))
 		if err := patch(annotations[i:end], end >= len(annotations)); err != nil {
 			return err
 		}
