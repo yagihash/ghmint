@@ -12,6 +12,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    env:
+      UPDATE_BRANCH: chore/update-permissions
 
     steps:
       - uses: cicd-sensor/cicd-sensor-action@6511eb44c91d71b2b93d71193b1bf2cb18352f66 # v0.0.38
@@ -43,12 +45,20 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Delete stale update branch
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.ghmint.outputs.token }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          gh api --method DELETE "repos/${REPOSITORY}/git/refs/heads/${UPDATE_BRANCH}" || true
+
       - name: Create signed commit
         if: steps.diff.outputs.changed == 'true'
         uses: yagihash/actions/signed-commit@75a36e929a30f99149784465dcdf9d33ab01a120 # v0.0.4
         with:
           token: ${{ steps.ghmint.outputs.token }}
-          branch: chore/update-permissions
+          branch: ${{ env.UPDATE_BRANCH }}
           message: "chore: update GitHub App permissions from OpenAPI spec"
           files: internal/webhook/permissions_gen.go
 
@@ -64,7 +74,7 @@ jobs:
 
             - Source: `components/schemas/app-permissions`
             - Generator: `tools/gen-permissions`
-          head: chore/update-permissions
+          head: ${{ env.UPDATE_BRANCH }}
           base: main
 
       - name: Write summary
