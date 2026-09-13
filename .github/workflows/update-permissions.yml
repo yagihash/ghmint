@@ -34,35 +34,45 @@ jobs:
           scope: ${{ github.repository }}
           policy: update-permissions
 
-      - name: Setup git
-        env:
-          GH_TOKEN: ${{ steps.ghmint.outputs.token }}
+      - name: Check for changes
+        id: diff
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          gh auth setup-git
+          if git diff --quiet -- internal/webhook/permissions_gen.go; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Create PR if changed
+      - name: Create signed commit
+        if: steps.diff.outputs.changed == 'true'
+        uses: yagihash/actions/signed-commit@75a36e929a30f99149784465dcdf9d33ab01a120 # v0.0.4
+        with:
+          token: ${{ steps.ghmint.outputs.token }}
+          branch: chore/update-permissions
+          message: "chore: update GitHub App permissions from OpenAPI spec"
+          files: internal/webhook/permissions_gen.go
+
+      - name: Create pull request
+        id: pr
+        if: steps.diff.outputs.changed == 'true'
+        uses: yagihash/actions/create-pull-request@75a36e929a30f99149784465dcdf9d33ab01a120 # v0.0.4
+        with:
+          token: ${{ steps.ghmint.outputs.token }}
+          title: "chore: update GitHub App permissions from OpenAPI spec"
+          body: |
+            Regenerated `internal/webhook/permissions_gen.go` from the GitHub REST API OpenAPI spec.
+
+            - Source: `components/schemas/app-permissions`
+            - Generator: `tools/gen-permissions`
+          head: chore/update-permissions
+          base: main
+
+      - name: Write summary
         env:
-          GH_TOKEN: ${{ steps.ghmint.outputs.token }}
+          CHANGED: ${{ steps.diff.outputs.changed }}
+          PR_URL: ${{ steps.pr.outputs.pull-request-url }}
         run: |
-          if ! git diff --quiet; then
-            BRANCH="chore/update-permissions-$(date +%Y%m%d)"
-            git checkout -b "$BRANCH"
-            git add internal/webhook/permissions_gen.go
-            git commit -m "chore: update GitHub App permissions from OpenAPI spec"
-            git push origin "$BRANCH" --force
-
-            if PR_URL=$(gh pr create \
-              --title "chore: update GitHub App permissions from OpenAPI spec" \
-              --body $'Regenerated `internal/webhook/permissions_gen.go` from the GitHub REST API OpenAPI spec.\n\n- Source: `components/schemas/app-permissions`\n- Generator: `tools/gen-permissions`' \
-              --base main \
-              --head "$BRANCH"); then
-              :
-            else
-              PR_URL=$(gh pr view "$BRANCH" --json url --jq '.url')
-            fi
-
+          if [[ "$CHANGED" == "true" ]]; then
             {
               echo "## Update GitHub App permissions"
               echo ""
@@ -72,7 +82,7 @@ jobs:
               echo ""
               echo "### Diff"
               echo '```diff'
-              git diff HEAD~1 HEAD -- internal/webhook/permissions_gen.go
+              git diff -- internal/webhook/permissions_gen.go
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
           else
