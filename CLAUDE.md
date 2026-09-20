@@ -35,8 +35,7 @@ OIDC ID Token の検証（署名・`aud`・`exp`・`iat`）はフレームワー
 | `pkg/verifier/rego` | Rego ポリシーを使った `Verifier` 実装。評価は 5 秒タイムアウト付き |
 | `pkg/policystore` | `PolicyStore` インターフェース定義のみ |
 | `pkg/policystore/github` | GitHub リポジトリから Rego ファイルを取得する `PolicyStore` 実装。`pkg/installation.Client` を使って認証する |
-| `pkg/installation` | GitHub App 認証クライアント。JWT 署名・installation ID・installation token 取得（キャッシュ付き）を提供。`TokenForOwner(ctx, owner) (string, error)` が主要 API |
-| `internal/tokenissuer` | GitHub App Installation Access Token の発行のみ。`pkg/installation.Client` を使って認証し、permissions・repositories を指定してトークンを発行する |
+| `pkg/installation` | GitHub App 認証クライアント。JWT 署名・installation ID・installation token 取得（キャッシュ付き）を提供。`TokenForOwner(ctx, owner) (string, error)` に加え、`IssueToken(ctx, owner, permissions, repositories) (IssueResult, error)` でユーザー向け Installation Access Token を発行する |
 | `internal/webhook` | GitHub `pull_request` webhook を受信し、`.github/ghmint/*.rego` の静的バリデーションを行い、GitHub Checks API で結果を報告する |
 | `pkg/app` | サービス全体を束ねる `App` 型。OIDC 検証・Token 発行・HTTP サーバーを内部で構築する。HTTP ハンドラは unexported |
 | `tools/gen-permissions` | GitHub REST API OpenAPI spec（`components/schemas/app-permissions`）から `internal/webhook/permissions_gen.go` を生成する |
@@ -47,8 +46,7 @@ OIDC ID Token の検証（署名・`aud`・`exp`・`iat`）はフレームワー
 App (pkg/app)
   ├─ internal/oidc              （OIDC JWT 検証 → Claims 取得、コア）
   ├─ pkg/verifier               （Verifier インターフェース + DenialError）
-  └─ internal/tokenissuer       （GitHub App Installation Access Token 発行）
-       └─ pkg/installation      （GitHub App 認証・キャッシュ）
+  └─ pkg/installation           （GitHub App 認証・キャッシュ・Installation Access Token 発行）
 
 main.go が組み立てる実装:
   pkg/signer/kms                → pkg/signer.Signer を満たす
@@ -59,7 +57,7 @@ main.go が組み立てる実装:
   internal/webhook              → WebhookHandler（installation.Client を受け取る）
 ```
 
-`pkg/installation.Client` は `main.go` で1インスタンスだけ生成し、`internal/tokenissuer`・`pkg/policystore/github`・`internal/webhook` に注入する。これにより installation ID・installation token のキャッシュが全コンポーネントで共有される。
+`pkg/installation.Client` は `main.go` で1インスタンスだけ生成し、`pkg/app`（ユーザー向けトークン発行用）・`pkg/policystore/github`・`internal/webhook` に注入する。これにより installation ID・installation token のキャッシュが全コンポーネントで共有される。
 
 ### pkg/installation のキャッシュ設計
 

@@ -63,14 +63,22 @@ func realMain() int {
 		wh = webhook.NewHandler(ctx, installClient, cfg.WebhookSecret, log)
 	}
 
-	sts, err := app.New(app.Config{
+	appCfg := app.Config{
 		Audience:       cfg.Audience,
 		AllowedIssuers: cfg.AllowedIssuers,
 		Installation:   installClient,
 		Logger:         log,
 		Verifier:       pv,
-		WebhookHandler: wh,
-	})
+	}
+	// Assigning a nil *webhook.Handler directly to the http.Handler field
+	// would produce a non-nil interface holding a nil pointer (the classic
+	// Go typed-nil gotcha), which app.New would treat as "webhook enabled".
+	// Only set the field when wh is genuinely non-nil.
+	if wh != nil {
+		appCfg.WebhookHandler = wh
+	}
+
+	sts, err := app.New(appCfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize app: %v\n", err)
 		return ExitError

@@ -35,6 +35,18 @@ func (s *testSigner) SignRS256(_ context.Context, data []byte) ([]byte, error) {
 	return rsa.SignPKCS1v15(rand.Reader, s.key, crypto.SHA256, h[:])
 }
 
+// countingSigner wraps testSigner and records how many times SignRS256 is
+// invoked, letting tests assert KMS round-trip counts.
+type countingSigner struct {
+	inner *testSigner
+	count int
+}
+
+func (s *countingSigner) SignRS256(ctx context.Context, data []byte) ([]byte, error) {
+	s.count++
+	return s.inner.SignRS256(ctx, data)
+}
+
 func newTestClient(t *testing.T, srv *httptest.Server) *Client {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -227,6 +239,50 @@ func TestIssueToken_RepositoryOwnerMismatch(t *testing.T) {
 	_, err := c.IssueToken(context.Background(), "myorg", nil, []string{"otherorg/repo"})
 	if err == nil {
 		t.Fatal("expected error for repository owner not matching token owner")
+	}
+}
+
+func TestIssueToken_RepositoryOwnerCaseInsensitive(t *testing.T) {
+	expiresAt := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
+	srv := httptest.NewServer(installationHandler(1, map[string]any{
+		"token":      "ghs_test_token",
+		"expires_at": expiresAt.Format(time.RFC3339),
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	if _, err := c.IssueToken(context.Background(), "myorg", nil, []string{"MyOrg/repo"}); err != nil {
+		t.Fatalf("expected owner comparison to be case-insensitive, got error: %v", err)
+	}
+}
+
+func TestSignJWT_ReusedAcrossCalls(t *testing.T) {
+	srv := httptest.NewServer(installationHandler(1, map[string]any{
+		"token":      "ghs_test_token",
+		"expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+	}))
+	defer srv.Close()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cs := &countingSigner{inner: &testSigner{key: key}}
+	u, _ := url.Parse(srv.URL)
+	c := New("app-123", cs, WithHTTPClient(&http.Client{
+		Transport: &redirectTransport{target: u},
+	}))
+
+	// Two different owners, each cold on installID/token cache, should
+	// still share a single signed App JWT.
+	if _, err := c.IssueToken(context.Background(), "org-a", nil, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := c.IssueToken(context.Background(), "org-b", nil, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cs.count != 1 {
+		t.Errorf("expected 1 JWT signing across both calls, got %d", cs.count)
 	}
 }
 

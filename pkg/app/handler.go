@@ -68,7 +68,13 @@ func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {
 	permissions, repositories, err := s.policyVerifier.Verify(r.Context(), claims.Raw, req.Scope, req.Policy)
 	if err != nil {
 		if policyErr, ok2 := errors.AsType[*verifier.DenialError](err); ok2 {
-			s.logger.WarnContext(r.Context(), "policy denied token issuance", "scope", req.Scope, "policy", req.Policy, "reason", policyErr.Reason)
+			if policyErr.Upstream {
+				// Still fail-closed (403) per CLAUDE.md, but logged at error level
+				// and tagged so infra outages don't blend in with real denials.
+				s.logger.ErrorContext(r.Context(), "policy denied token issuance due to upstream failure", "scope", req.Scope, "policy", req.Policy, "reason", policyErr.Reason)
+			} else {
+				s.logger.WarnContext(r.Context(), "policy denied token issuance", "scope", req.Scope, "policy", req.Policy, "reason", policyErr.Reason)
+			}
 			writeError(w, http.StatusForbidden, "token issuance denied by policy", "FORBIDDEN")
 		} else {
 			s.logger.ErrorContext(r.Context(), "policy evaluation failed", "error", err)

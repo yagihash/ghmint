@@ -6,6 +6,12 @@ import "context"
 // The server returns 403 when it receives this error (fail-closed policy).
 type DenialError struct {
 	Reason string
+	// Upstream is true when the denial was caused by a policy store /
+	// GitHub infrastructure failure (e.g. an outage or network error)
+	// rather than the policy content itself. The response to the client
+	// is still 403 per the fail-closed policy (see CLAUDE.md), but callers
+	// may log or alert on this separately from a genuine policy denial.
+	Upstream bool
 }
 
 func (e *DenialError) Error() string {

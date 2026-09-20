@@ -10,9 +10,14 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	coreidoidc "github.com/coreos/go-oidc/v3/oidc"
 )
+
+// maxClockSkew bounds how far a token's iat may lie in the future to
+// tolerate clock drift between this service and the OIDC provider.
+const maxClockSkew = 2 * time.Minute
 
 type Verifier struct {
 	audience       string
@@ -159,6 +164,15 @@ func (v *Verifier) Verify(ctx context.Context, rawToken string) (Claims, error) 
 	idToken, err := p.Verifier(&coreidoidc.Config{ClientID: v.audience}).Verify(ctx, rawToken)
 	if err != nil {
 		return Claims{}, err
+	}
+
+	// go-oidc captures iat into IssuedAt but does not itself validate it, so
+	// this is the core, non-skippable check that enforces it.
+	if idToken.IssuedAt.IsZero() {
+		return Claims{}, errors.New("iat claim is missing")
+	}
+	if idToken.IssuedAt.After(time.Now().Add(maxClockSkew)) {
+		return Claims{}, fmt.Errorf("iat %s is in the future beyond allowed clock skew", idToken.IssuedAt)
 	}
 
 	var post postVerifyClaims
