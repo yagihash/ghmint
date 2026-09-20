@@ -22,6 +22,10 @@ const (
 	annotationsPerRequest  = 50
 	checkRunName           = "ghmint / policy validation"
 	githubAPIVersion       = "2026-03-10"
+	prFilesPerPage         = 100
+	// GitHub's pull-files API caps listings at 3000 files; 30 pages of 100
+	// comfortably covers that while bounding the loop.
+	maxPRFilesPages = 30
 )
 
 type githubClient struct {
@@ -36,40 +40,53 @@ func newGithubClient(client *installation.Client) *githubClient {
 	}
 }
 
-// listPRFiles returns paths of changed files in the PR that match .github/ghmint/*.rego.
+// listPRFiles returns paths of changed, non-removed files in the PR that
+// match .github/ghmint/*.rego. Deleted policy files are excluded since
+// there is nothing left at the PR head SHA to fetch and validate.
 func (c *githubClient) listPRFiles(ctx context.Context, token, owner, repo string, pr int) ([]string, error) {
-	reqURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls/%d/files",
-		url.PathEscape(owner), url.PathEscape(repo), pr)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
-	}
-	c.setHeaders(req, token)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("github api: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxWebhookErrorBody))
-		return nil, fmt.Errorf("github api returned %d: %s", resp.StatusCode, body)
-	}
-
-	var files []struct {
-		Filename string `json:"filename"`
-	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxWebhookResponseBody)).Decode(&files); err != nil {
-		return nil, fmt.Errorf("decode: %w", err)
-	}
-
 	var result []string
-	for _, f := range files {
-		if strings.HasPrefix(f.Filename, ".github/ghmint/") && strings.HasSuffix(f.Filename, ".rego") {
-			result = append(result, f.Filename)
+
+	for page := 1; page <= maxPRFilesPages; page++ {
+		reqURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/pulls/%d/files?per_page=%d&page=%d",
+			url.PathEscape(owner), url.PathEscape(repo), pr, prFilesPerPage, page)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("build request: %w", err)
+		}
+		c.setHeaders(req, token)
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("github api: %w", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, maxWebhookErrorBody))
+			resp.Body.Close()
+			return nil, fmt.Errorf("github api returned %d: %s", resp.StatusCode, body)
+		}
+
+		var files []struct {
+			Filename string `json:"filename"`
+			Status   string `json:"status"`
+		}
+		err = json.NewDecoder(io.LimitReader(resp.Body, maxWebhookResponseBody)).Decode(&files)
+		resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("decode: %w", err)
+		}
+
+		for _, f := range files {
+			if f.Status != "removed" && strings.HasPrefix(f.Filename, ".github/ghmint/") && strings.HasSuffix(f.Filename, ".rego") {
+				result = append(result, f.Filename)
+			}
+		}
+
+		if len(files) < prFilesPerPage {
+			break
 		}
 	}
+
 	return result, nil
 }
 

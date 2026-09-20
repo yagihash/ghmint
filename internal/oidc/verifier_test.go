@@ -101,6 +101,23 @@ func signTestJWT(t *testing.T, key *rsa.PrivateKey, issuer, audience string) str
 	return input + "." + base64.RawURLEncoding.EncodeToString(sig)
 }
 
+// signTestJWTWithClaims signs a JWT with an arbitrary claims payload, letting
+// tests control fields like iat that signTestJWT fixes to "now".
+func signTestJWTWithClaims(t *testing.T, key *rsa.PrivateKey, payload map[string]any) string {
+	t.Helper()
+	headerJSON, _ := json.Marshal(map[string]string{"typ": "JWT", "alg": "RS256", "kid": "test-key"})
+	payloadJSON, _ := json.Marshal(payload)
+	h := base64.RawURLEncoding.EncodeToString(headerJSON)
+	p := base64.RawURLEncoding.EncodeToString(payloadJSON)
+	input := h + "." + p
+	hash := sha256.Sum256([]byte(input))
+	sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, hash[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return input + "." + base64.RawURLEncoding.EncodeToString(sig)
+}
+
 // rawJWT builds a syntactically valid but unsigned JWT (signature is literal "sig").
 func rawJWT(alg, iss string) string {
 	h := base64.RawURLEncoding.EncodeToString([]byte(`{"typ":"JWT","alg":"` + alg + `"}`))
@@ -183,6 +200,43 @@ func TestVerify_Success(t *testing.T) {
 	}
 	if claims.Raw["iss"] != issuer {
 		t.Errorf("expected iss=%q in claims, got %v", issuer, claims.Raw["iss"])
+	}
+}
+
+func TestVerify_IatInFuture(t *testing.T) {
+	key := mustGenerateRSAKey(t)
+	srv := newTestOIDCServer(t, &key.PublicKey)
+	issuer := "https://" + srv.Listener.Addr().String()
+
+	v := New(issuer, []string{issuer})
+	now := time.Now()
+	token := signTestJWTWithClaims(t, key, map[string]any{
+		"iss": issuer,
+		"sub": "test-subject",
+		"aud": issuer,
+		"exp": now.Add(time.Hour).Unix(),
+		"iat": now.Add(time.Hour).Unix(), // far beyond allowed clock skew
+	})
+	if _, err := v.Verify(tlsCtx(t, srv), token); err == nil {
+		t.Fatal("expected error for iat far in the future")
+	}
+}
+
+func TestVerify_IatMissing(t *testing.T) {
+	key := mustGenerateRSAKey(t)
+	srv := newTestOIDCServer(t, &key.PublicKey)
+	issuer := "https://" + srv.Listener.Addr().String()
+
+	v := New(issuer, []string{issuer})
+	now := time.Now()
+	token := signTestJWTWithClaims(t, key, map[string]any{
+		"iss": issuer,
+		"sub": "test-subject",
+		"aud": issuer,
+		"exp": now.Add(time.Hour).Unix(),
+	})
+	if _, err := v.Verify(tlsCtx(t, srv), token); err == nil {
+		t.Fatal("expected error for missing iat claim")
 	}
 }
 

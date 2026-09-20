@@ -2,6 +2,7 @@ package rego
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -27,7 +28,10 @@ func New(store policystore.PolicyStore) *RegoVerifier {
 func (v *RegoVerifier) Verify(ctx context.Context, claims map[string]any, scope, policy string) (map[string]string, []string, error) {
 	content, err := v.store.Fetch(ctx, scope, policy)
 	if err != nil {
-		return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("fetch policy: %v", err)}
+		return nil, nil, &verifier.DenialError{
+			Reason:   fmt.Sprintf("fetch policy: %v", err),
+			Upstream: errors.Is(err, policystore.ErrUpstream),
+		}
 	}
 
 	evalCtx, cancel := context.WithTimeout(ctx, evalTimeout)
@@ -85,6 +89,9 @@ func (v *RegoVerifier) Verify(ctx context.Context, claims map[string]any, scope,
 	if !ok {
 		return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("policy: permissions has unexpected type %T", permVal)}
 	}
+	if len(permRaw) == 0 {
+		return nil, nil, &verifier.DenialError{Reason: "policy: permissions must not be empty"}
+	}
 	permissions := make(map[string]string, len(permRaw))
 	for k, val := range permRaw {
 		s, ok := val.(string)
@@ -124,8 +131,9 @@ func (v *RegoVerifier) Verify(ctx context.Context, claims map[string]any, scope,
 				}
 				// The issued token is always bound to the scope owner's installation,
 				// so every repository must belong to that owner. Reject mismatches
-				// instead of silently dropping the owner at issuance time.
-				if org != scopeOwner {
+				// instead of silently dropping the owner at issuance time. GitHub
+				// owner names are case-insensitive, so compare accordingly.
+				if !strings.EqualFold(org, scopeOwner) {
 					return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("policy: repository %q owner does not match scope owner %q", s, scopeOwner)}
 				}
 				repositories = append(repositories, s)

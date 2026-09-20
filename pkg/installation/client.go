@@ -103,7 +103,8 @@ func (c *Client) IssueToken(ctx context.Context, owner string, permissions map[s
 		// The token is scoped to owner's installation; a repository under a
 		// different owner cannot be granted here. Reject rather than silently
 		// dropping the owner and requesting the bare name against owner.
-		if repoOwner != owner {
+		// GitHub owner names are case-insensitive, so compare accordingly.
+		if !strings.EqualFold(repoOwner, owner) {
 			return IssueResult{}, fmt.Errorf("repository %q owner does not match token owner %q", r, owner)
 		}
 	}
@@ -125,13 +126,21 @@ func (c *Client) IssueToken(ctx context.Context, owner string, permissions map[s
 	return c.issueToken(ctx, jwt, id, permissions, repositories)
 }
 
+// signJWT returns a signed App JWT, reusing a cached one until it is close
+// to expiry. The JWT depends only on the App ID and time (not per-request
+// data), so caching it avoids a KMS round-trip on every call.
 func (c *Client) signJWT(ctx context.Context) (string, error) {
+	if tok, ok := c.cache.getJWT(); ok {
+		return tok, nil
+	}
+
 	now := time.Now()
+	exp := now.Add(600 * time.Second)
 	headerJSON, _ := json.Marshal(map[string]string{"typ": "JWT", "alg": "RS256"})
 	payloadJSON, _ := json.Marshal(map[string]any{
 		"iss": c.appID,
 		"iat": now.Add(-60 * time.Second).Unix(),
-		"exp": now.Add(600 * time.Second).Unix(),
+		"exp": exp.Unix(),
 	})
 	header := base64.RawURLEncoding.EncodeToString(headerJSON)
 	payload := base64.RawURLEncoding.EncodeToString(payloadJSON)
@@ -140,7 +149,9 @@ func (c *Client) signJWT(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return signingInput + "." + base64.RawURLEncoding.EncodeToString(sig), nil
+	jwt := signingInput + "." + base64.RawURLEncoding.EncodeToString(sig)
+	c.cache.setJWT(jwt, exp.Add(-jwtSafetyMargin))
+	return jwt, nil
 }
 
 func (c *Client) installationID(ctx context.Context, jwt, owner string) (int64, error) {

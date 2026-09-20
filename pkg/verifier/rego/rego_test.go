@@ -3,8 +3,10 @@ package rego_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
+	"github.com/yagihash/ghmint/pkg/policystore"
 	"github.com/yagihash/ghmint/pkg/verifier"
 	"github.com/yagihash/ghmint/pkg/verifier/rego"
 )
@@ -180,6 +182,54 @@ func TestVerify_PolicyFetchError(t *testing.T) {
 	v := rego.New(store)
 	_, _, err := v.Verify(context.Background(), claims(issuer), "org/repo", "policy")
 	assertDenialError(t, err)
+}
+
+func TestVerify_PolicyFetchError_Upstream(t *testing.T) {
+	store := &staticPolicyStore{err: fmt.Errorf("github api unavailable: %w", policystore.ErrUpstream)}
+	v := rego.New(store)
+	_, _, err := v.Verify(context.Background(), claims(issuer), "org/repo", "policy")
+	denialErr, ok := errors.AsType[*verifier.DenialError](err)
+	if !ok {
+		t.Fatalf("expected *verifier.DenialError, got %T: %v", err, err)
+	}
+	if !denialErr.Upstream {
+		t.Error("expected Upstream=true for an ErrUpstream-wrapped fetch failure")
+	}
+}
+
+func TestVerify_PolicyFetchError_NotUpstream(t *testing.T) {
+	store := &staticPolicyStore{err: errors.New("github api returned 404: not found")}
+	v := rego.New(store)
+	_, _, err := v.Verify(context.Background(), claims(issuer), "org/repo", "policy")
+	denialErr, ok := errors.AsType[*verifier.DenialError](err)
+	if !ok {
+		t.Fatalf("expected *verifier.DenialError, got %T: %v", err, err)
+	}
+	if denialErr.Upstream {
+		t.Error("expected Upstream=false for a plain fetch failure")
+	}
+}
+
+func TestVerify_PermissionsEmpty(t *testing.T) {
+	store := &staticPolicyStore{content: policy(`issuer := "https://a.example"
+permissions := {}
+allow := true`)}
+	v := rego.New(store)
+	_, _, err := v.Verify(context.Background(), claims(issuer), "org/repo", "policy")
+	assertDenialError(t, err)
+}
+
+func TestVerify_ReposOwnerCaseInsensitive(t *testing.T) {
+	store := &staticPolicyStore{content: policy(basePolicy + `
+repositories := ["Org/a"]`)}
+	v := rego.New(store)
+	_, repos, err := v.Verify(context.Background(), claims(issuer), "org", "policy")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(repos) != 1 || repos[0] != "Org/a" {
+		t.Errorf("expected repos=[Org/a], got %v", repos)
+	}
 }
 
 func TestVerify_AllowWithEqualityInBody(t *testing.T) {

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/yagihash/ghmint/pkg/installation"
+	"github.com/yagihash/ghmint/pkg/policystore"
 )
 
 const (
@@ -84,7 +85,7 @@ func (r *RepoPolicyStore) Fetch(ctx context.Context, scope, policy string) ([]by
 	owner, _, _ := strings.Cut(repo, "/")
 	token, err := r.installClient.TokenForOwner(ctx, owner)
 	if err != nil {
-		return nil, fmt.Errorf("get installation token: %w", err)
+		return nil, fmt.Errorf("get installation token: %w: %w", policystore.ErrUpstream, err)
 	}
 
 	content, err := r.getFileContent(ctx, token, repo, path)
@@ -116,12 +117,15 @@ func (r *RepoPolicyStore) getFileContent(ctx context.Context, token, repo, path 
 
 	resp, err := r.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("github api request: %w", err)
+		return nil, fmt.Errorf("github api request: %w: %w", policystore.ErrUpstream, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
+		if resp.StatusCode >= http.StatusInternalServerError {
+			return nil, fmt.Errorf("github api returned %d: %w: %s", resp.StatusCode, policystore.ErrUpstream, string(body))
+		}
 		return nil, fmt.Errorf("github api returned %d: %s", resp.StatusCode, string(body))
 	}
 
