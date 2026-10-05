@@ -37,6 +37,7 @@ var validPermissions = map[string][]string{
 	"organization_custom_properties":              {"read", "write", "admin"},
 	"organization_custom_roles":                   {"read", "write"},
 	"organization_events":                         {"read"},
+	"organization_external_properties_for_repos":  {"read", "write", "admin"},
 	"organization_hooks":                          {"read", "write"},
 	"organization_packages":                       {"read", "write"},
 	"organization_personal_access_token_requests": {"read", "write"},
