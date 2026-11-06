@@ -107,6 +107,24 @@ Policies live alongside the code they protect — each repository (or organizati
 
    </details>
 
+   <details>
+   <summary>RFC 7523 (JWT Bearer grant) form</summary>
+
+   `POST /token` also accepts `application/x-www-form-urlencoded` and behaves as an [RFC 7523](https://datatracker.ietf.org/doc/html/rfc7523) token endpoint:
+
+   ```sh
+   curl -sSf https://<CLOUD_RUN_HOSTNAME>/token \
+     --data-urlencode "grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer" \
+     --data-urlencode "assertion=$OIDC_TOKEN" \
+     --data-urlencode "scope=<org>" \
+     --data-urlencode "policy=<policy-name>"
+   # => {"access_token":"ghs_...","token_type":"Bearer","expires_in":3599,...}
+   ```
+
+   Errors use the RFC 6749 §5.2 format (`{"error":"invalid_grant",...}`).
+
+   </details>
+
 ## Configuration
 
 All environment variables use the `STS_` prefix.

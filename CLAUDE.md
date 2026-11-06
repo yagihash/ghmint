@@ -176,6 +176,27 @@ type DenialError struct {
 }
 ```
 
+### POST /token（RFC 7523 / JWT Bearer グラント）
+
+`Content-Type: application/x-www-form-urlencoded` の場合は RFC 6749 §3.2 のトークンエンドポイント + RFC 7523 §2.1 として動作する。`Content-Type` で RFC 版（form）とレガシー版（JSON）を振り分ける。クライアント認証なし（assertion 自体が資格情報）。
+
+```
+POST /token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer
+&assertion=<oidc-token>
+&scope=<org または org/repo>   // スペースを含まない単一 scope-token
+&policy=<ポリシー名>            // 拡張パラメータ
+```
+
+- パラメータはボディのみ有効（クエリは無視）。重複パラメータは `invalid_request`
+- 成功: `access_token`, `token_type`(`Bearer`), `expires_in` に加え拡張フィールド `expires_at`・`permissions`・`repositories`。`Cache-Control: no-store` / `Pragma: no-cache`
+- エラーは RFC 6749 §5.2 形式 `{"error","error_description"}`。OIDC 検証失敗は `invalid_grant`(400)、scope 不正は `invalid_scope`、未対応 grant は `unsupported_grant_type`、内部エラーは `server_error`(500)
+- fail-closed 方針は維持: ポリシー起因の失敗は理由を区別せず `invalid_grant`(400) にまとめる（詳細はサーバーログ）
+
+OIDC 検証〜ポリシー評価〜トークン発行の共通処理は `pkg/app/issue.go` の `server.issue`。
+
 ### POST /webhook
 
 `X-Hub-Signature-256` で HMAC-SHA256 署名を検証し、`pull_request` の `opened`/`synchronize`/`reopened` アクションのみ処理する。202 Accepted を即座に返し、バリデーションは goroutine で非同期実行する。
