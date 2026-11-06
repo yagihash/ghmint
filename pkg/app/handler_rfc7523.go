@@ -14,8 +14,7 @@ const grantTypeJWTBearer = "urn:ietf:params:oauth:grant-type:jwt-bearer"
 //
 //	grant_type = urn:ietf:params:oauth:grant-type:jwt-bearer
 //	assertion  = <OIDC ID Token>
-//	scope      = <org> or <org>/<repo>   (single scope-token)
-//	policy     = <policy name>           (extension parameter)
+//	scope      = <org>[/<repo>]:<policy>  (single scope-token)
 //
 // The client is not authenticated (RFC 7523 §2.1 allows this); the assertion
 // itself is the credential.
@@ -52,21 +51,17 @@ func (s *server) handleTokenRFC7523(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	scope := form.Get("scope")
-	if scope == "" {
+	rawScope := form.Get("scope")
+	if rawScope == "" {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_scope", "scope is required")
 		return
 	}
+	scope, policy, ok := parseScopeToken(rawScope)
+	if !ok {
+		writeOAuthError(w, http.StatusBadRequest, "invalid_scope", "scope must be <org>[/<repo>]:<policy>")
+		return
+	}
 	org, _, _ := strings.Cut(scope, "/")
-	if org == "" || strings.ContainsAny(scope, " \t\r\n") {
-		writeOAuthError(w, http.StatusBadRequest, "invalid_scope", "scope must be <org> or <org>/<repo>")
-		return
-	}
-	policy := form.Get("policy")
-	if policy == "" {
-		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "policy is required")
-		return
-	}
 
 	result, ierr := s.issue(r.Context(), assertion, org, scope, policy)
 	if ierr != nil {
@@ -121,4 +116,22 @@ func writeOAuthError(w http.ResponseWriter, status int, code, desc string) {
 		Description string `json:"error_description,omitempty"`
 	}{code, desc})
 	w.Write(b)
+}
+
+// parseScopeToken splits "<org>[/<repo>]:<policy>" at the last colon.
+// It rejects whitespace (multiple scope-tokens) and empty components.
+func parseScopeToken(raw string) (scope, policy string, ok bool) {
+	if strings.ContainsAny(raw, " \t\r\n") {
+		return "", "", false
+	}
+	i := strings.LastIndex(raw, ":")
+	if i < 0 {
+		return "", "", false
+	}
+	scope, policy = raw[:i], raw[i+1:]
+	org, repo, hasRepo := strings.Cut(scope, "/")
+	if org == "" || policy == "" || (hasRepo && (repo == "" || strings.Contains(repo, "/"))) {
+		return "", "", false
+	}
+	return scope, policy, true
 }

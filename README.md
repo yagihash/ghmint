@@ -116,8 +116,7 @@ Policies live alongside the code they protect — each repository (or organizati
    curl -sSf https://<CLOUD_RUN_HOSTNAME>/token \
      --data-urlencode "grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer" \
      --data-urlencode "assertion=$OIDC_TOKEN" \
-     --data-urlencode "scope=<org>" \
-     --data-urlencode "policy=<policy-name>"
+     --data-urlencode "scope=<org>:<policy-name>"   # or <org>/<repo>:<policy-name>
    # => {"access_token":"ghs_...","token_type":"Bearer","expires_in":3599,...}
    ```
 

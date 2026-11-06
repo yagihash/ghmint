@@ -25,8 +25,7 @@ func validForm() url.Values {
 	return url.Values{
 		"grant_type": {grantTypeJWTBearer},
 		"assertion":  {"oidc.jwt"},
-		"scope":      {"org/repo"},
-		"policy":     {"pol"},
+		"scope":      {"org/repo:pol"},
 	}
 }
 
@@ -77,9 +76,11 @@ func TestHandleTokenRFC7523_RequestErrors(t *testing.T) {
 		{"wrong grant_type", func(v url.Values) { v.Set("grant_type", "client_credentials") }, "unsupported_grant_type"},
 		{"missing assertion", func(v url.Values) { v.Del("assertion") }, "invalid_request"},
 		{"missing scope", func(v url.Values) { v.Del("scope") }, "invalid_scope"},
-		{"multiple scope tokens", func(v url.Values) { v.Set("scope", "a b") }, "invalid_scope"},
-		{"empty org", func(v url.Values) { v.Set("scope", "/repo") }, "invalid_scope"},
-		{"missing policy", func(v url.Values) { v.Del("policy") }, "invalid_request"},
+		{"multiple scope tokens", func(v url.Values) { v.Set("scope", "org:a b:c") }, "invalid_scope"},
+		{"empty org", func(v url.Values) { v.Set("scope", "/repo:pol") }, "invalid_scope"},
+		{"no policy separator", func(v url.Values) { v.Set("scope", "org/repo") }, "invalid_scope"},
+		{"empty policy", func(v url.Values) { v.Set("scope", "org:") }, "invalid_scope"},
+		{"empty repo", func(v url.Values) { v.Set("scope", "org/:pol") }, "invalid_scope"},
 		{"duplicate param", func(v url.Values) { v.Add("assertion", "other") }, "invalid_request"},
 	}
 	for _, tt := range tests {
@@ -131,5 +132,18 @@ func TestHandleTokenRFC7523_Failures(t *testing.T) {
 				t.Errorf("got %d %s", rr.Code, rr.Body)
 			}
 		})
+	}
+}
+
+func TestParseScopeToken(t *testing.T) {
+	tests := []struct{ in, scope, policy string }{
+		{"org:pol", "org", "pol"},
+		{"org/repo:pol", "org/repo", "pol"},
+	}
+	for _, tt := range tests {
+		sc, p, ok := parseScopeToken(tt.in)
+		if !ok || sc != tt.scope || p != tt.policy {
+			t.Errorf("%q: got %q %q %v", tt.in, sc, p, ok)
+		}
 	}
 }

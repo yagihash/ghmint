@@ -186,9 +186,10 @@ Content-Type: application/x-www-form-urlencoded
 
 grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer
 &assertion=<oidc-token>
-&scope=<org または org/repo>   // スペースを含まない単一 scope-token
-&policy=<ポリシー名>            // 拡張パラメータ
+&scope=<org>[/<repo>]:<ポリシー名>   // スペースを含まない単一 scope-token
 ```
+
+拡張パラメータを送れないクライアント（Claude tag の federated agent access 等）のため、ポリシー名は `scope` に含める。最後の `:` で分割し、前半が従来の `scope`（`<org>` / `<org>/<repo>`）、後半が `policy`。空要素・空白・`:` 無しは `invalid_scope`。JSON 版（レガシー）は従来どおり `scope` と `policy` を別フィールドで受け取り、併存させる。
 
 - パラメータはボディのみ有効（クエリは無視）。重複パラメータは `invalid_request`
 - 成功: `access_token`, `token_type`(`Bearer`), `expires_in` に加え拡張フィールド `expires_at`・`permissions`・`repositories`。`Cache-Control: no-store` / `Pragma: no-cache`
