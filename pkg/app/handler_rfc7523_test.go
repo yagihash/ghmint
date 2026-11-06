@@ -139,6 +139,7 @@ func TestParseScopeToken(t *testing.T) {
 	tests := []struct{ in, scope, policy string }{
 		{"org:pol", "org", "pol"},
 		{"org/repo:pol", "org/repo", "pol"},
+		{"org/repo:a:b", "org/repo", "a:b"},
 	}
 	for _, tt := range tests {
 		sc, p, ok := parseScopeToken(tt.in)

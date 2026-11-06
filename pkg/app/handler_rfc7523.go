@@ -118,13 +118,14 @@ func writeOAuthError(w http.ResponseWriter, status int, code, desc string) {
 	w.Write(b)
 }
 
-// parseScopeToken splits "<org>[/<repo>]:<policy>" at the last colon.
+// parseScopeToken splits "<org>[/<repo>]:<policy>" at the first colon. Org and
+// repo names never contain a colon, so everything after it is the policy name.
 // It rejects whitespace (multiple scope-tokens) and empty components.
 func parseScopeToken(raw string) (scope, policy string, ok bool) {
 	if strings.ContainsAny(raw, " \t\r\n") {
 		return "", "", false
 	}
-	i := strings.LastIndex(raw, ":")
+	i := strings.Index(raw, ":")
 	if i < 0 {
 		return "", "", false
 	}
