@@ -1,16 +1,12 @@
 package app
 
 import (
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"mime"
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/yagihash/ghmint/pkg/verifier"
 )
 
 func (s *server) handleHealthz(w http.ResponseWriter, r *http.Request) {
@@ -24,7 +20,18 @@ type tokenRequest struct {
 	Policy string `json:"policy"`
 }
 
+// handleToken dispatches on Content-Type: application/x-www-form-urlencoded is
+// the RFC 7523 token endpoint; anything else goes to the legacy JSON API.
 func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {
+	if mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type")); err == nil && mt == "application/x-www-form-urlencoded" {
+		s.handleTokenRFC7523(w, r)
+		return
+	}
+	s.handleTokenLegacy(w, r)
+}
+
+// handleTokenLegacy is the original JSON API (Bearer OIDC token in Authorization header).
+func (s *server) handleTokenLegacy(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Content-Type") != "application/json" {
 		writeError(w, http.StatusUnsupportedMediaType, "Content-Type must be application/json", "UNSUPPORTED_MEDIA_TYPE")
 		return
@@ -58,48 +65,20 @@ func (s *server) handleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims, err := s.oidcVerifier.Verify(r.Context(), rawToken)
-	if err != nil {
-		s.logger.WarnContext(r.Context(), "oidc verification failed", "error", err)
-		writeError(w, http.StatusUnauthorized, "invalid token", "INVALID_TOKEN")
-		return
-	}
-
-	permissions, repositories, err := s.policyVerifier.Verify(r.Context(), claims.Raw, req.Scope, req.Policy)
-	if err != nil {
-		if policyErr, ok2 := errors.AsType[*verifier.DenialError](err); ok2 {
-			if policyErr.Upstream {
-				// Still fail-closed (403) per CLAUDE.md, but logged at error level
-				// and tagged so infra outages don't blend in with real denials.
-				s.logger.ErrorContext(r.Context(), "policy denied token issuance due to upstream failure", "scope", req.Scope, "policy", req.Policy, "reason", policyErr.Reason)
-			} else {
-				s.logger.WarnContext(r.Context(), "policy denied token issuance", "scope", req.Scope, "policy", req.Policy, "reason", policyErr.Reason)
-			}
+	result, ierr := s.issue(r.Context(), rawToken, org, req.Scope, req.Policy)
+	if ierr != nil {
+		switch ierr.kind {
+		case issueInvalidAssertion:
+			writeError(w, http.StatusUnauthorized, "invalid token", "INVALID_TOKEN")
+		case issueDenied:
 			writeError(w, http.StatusForbidden, "token issuance denied by policy", "FORBIDDEN")
-		} else {
-			s.logger.ErrorContext(r.Context(), "policy evaluation failed", "error", err)
+		case issuePolicyFailed:
 			writeError(w, http.StatusInternalServerError, "policy evaluation failed", "INTERNAL_ERROR")
+		default:
+			writeError(w, http.StatusInternalServerError, "failed to issue token", "INTERNAL_ERROR")
 		}
 		return
 	}
-
-	result, err := s.tokenIssuer.IssueToken(r.Context(), org, permissions, repositories)
-	if err != nil {
-		s.logger.ErrorContext(r.Context(), "failed to issue github app token", "error", err)
-		writeError(w, http.StatusInternalServerError, "failed to issue token", "INTERNAL_ERROR")
-		return
-	}
-
-	h := sha256.Sum256([]byte(result.Token))
-	s.logger.InfoContext(
-		r.Context(),
-		"successfully issued token",
-		"subject", claims.Raw["sub"],
-		"issuer", claims.Raw["iss"],
-		"hashed_token", base64.StdEncoding.EncodeToString(h[:]),
-		"permissions", result.Permissions,
-		"repositories", result.Repositories,
-	)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
