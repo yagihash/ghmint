@@ -23,6 +23,25 @@ allow if {
 		}
 	})
 
+	t.Run("disallowed builtin is reported with its name", func(t *testing.T) {
+		bad := validPolicy + "\n\nextra if http.send({\"method\": \"GET\", \"url\": \"https://example.com\"})\n"
+		result := validateRegoFile("policy.rego", []byte(bad), false)
+		if !containsError(result, `built-in function "http.send" is not allowed`) {
+			t.Errorf("expected disallowed builtin error, got %v", result.Errors)
+		}
+		if len(result.Warnings) != 0 {
+			t.Errorf("expected no warnings, got %v", result.Warnings)
+		}
+	})
+
+	t.Run("in operator is allowed", func(t *testing.T) {
+		ok := validPolicy + "\n\nextra if input.ref in {\"refs/heads/main\"}\n"
+		result := validateRegoFile("policy.rego", []byte(ok), false)
+		if len(result.Errors) != 0 {
+			t.Errorf("expected no errors, got %v", result.Errors)
+		}
+	})
+
 	t.Run("syntax error", func(t *testing.T) {
 		bad := `package ghmint
 issuer := "x"
