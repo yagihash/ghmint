@@ -5,6 +5,7 @@ package webhook
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"slices"
 	"time"
 
@@ -58,6 +59,13 @@ func validateRegoFile(filename string, content []byte, isOrgRepo bool) Validatio
 		})
 	}
 
+	// Compile with the same restricted capabilities as the runtime evaluator so that
+	// disallowed built-ins (and other compile errors) are rejected before merge.
+	if findings := compileFindings(filename, module); len(findings) > 0 {
+		result.Errors = append(result.Errors, findings...)
+		return result
+	}
+
 	ruleLines := map[string]int{}
 	for _, rule := range module.Rules {
 		name := string(rule.Head.Name)
@@ -90,6 +98,38 @@ func validateRegoFile(filename string, content []byte, isOrgRepo bool) Validatio
 	}
 
 	return result
+}
+
+var undefinedFunctionRe = regexp.MustCompile(`^undefined function (\S+)$`)
+
+// compileFindings compiles the module under regocaps.SafeCapabilities and converts compile
+// errors into findings. A call to a built-in that exists in OPA but is excluded by ghmint is
+// reported explicitly, since the list of allowed built-ins is not secret.
+func compileFindings(filename string, module *ast.Module) []Finding {
+	compiler := ast.NewCompiler().WithCapabilities(regocaps.SafeCapabilities())
+	compiler.Compile(map[string]*ast.Module{filename: module})
+	if !compiler.Failed() {
+		return nil
+	}
+
+	all := map[string]bool{}
+	for _, b := range ast.CapabilitiesForThisVersion().Builtins {
+		all[b.Name] = true
+	}
+
+	var findings []Finding
+	for _, e := range compiler.Errors {
+		line := 0
+		if e.Location != nil {
+			line = e.Location.Row
+		}
+		msg := e.Message
+		if m := undefinedFunctionRe.FindStringSubmatch(msg); m != nil && all[m[1]] {
+			msg = fmt.Sprintf("built-in function %q is not allowed in ghmint policies", m[1])
+		}
+		findings = append(findings, Finding{Line: line, Message: msg})
+	}
+	return findings
 }
 
 func validatePermissionsKV(filename string, content []byte, permLine int, result ValidationResult) ValidationResult {

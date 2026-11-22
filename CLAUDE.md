@@ -210,6 +210,7 @@ OIDC 検証〜ポリシー評価〜トークン発行の共通処理は `pkg/app
 3. `issuer`・`allow`・`permissions` 必須ルールの存在確認
 4. `permissions` の key-value 検証（OpenAPI spec 由来のリスト、per-permission の allowed values）
 5. `.github` リポジトリ以外のポリシーで `repositories` ルールが定義されていないかの確認
+6. `regocaps.SafeCapabilities()` でのコンパイルチェック。許可されていない built-in の使用は、関数名を明示した error として報告する（許可リストは秘匿情報ではない）
 
 `permissions` の valid な key-value は `tools/gen-permissions` で GitHub REST API OpenAPI spec（`components/schemas/app-permissions`）から生成し、`internal/webhook/permissions_gen.go` に保存する。毎週月曜に `.github/workflows/update-permissions.yml` が自動更新する。
 
