@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	cloud.google.com/go/kms v1.31.0
-	github.com/coreos/go-oidc/v3 v3.18.0
+	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/open-policy-agent/opa v1.18.2
 	google.golang.org/protobuf v1.36.11
