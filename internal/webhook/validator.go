@@ -33,7 +33,8 @@ type Finding struct {
 // validateRegoFile performs static validation of a Rego policy file.
 // isOrgRepo must be true when the file lives in a repository other than ".github",
 // indicating callers will invoke this policy with org/repo scope.
-func validateRegoFile(filename string, content []byte, isOrgRepo bool) ValidationResult {
+// apps lists the registered App names that the "app" rule may select.
+func validateRegoFile(filename string, content []byte, isOrgRepo bool, apps []string) ValidationResult {
 	var result ValidationResult
 
 	module, err := ast.ParseModule(filename, string(content))
@@ -97,6 +98,55 @@ func validateRegoFile(filename string, content []byte, isOrgRepo bool) Validatio
 		result = validatePermissionsKV(filename, content, ruleLines["permissions"], result)
 	}
 
+	if line, hasApp := ruleLines["app"]; hasApp {
+		result = validateApp(filename, content, line, apps, result)
+	}
+
+	return result
+}
+
+// validateApp checks that the "app" rule names a registered GitHub App.
+// Like validatePermissionsKV it evaluates with empty input, so an input-dependent
+// app is only warned about; the runtime check in the STS is authoritative.
+func validateApp(filename string, content []byte, appLine int, apps []string, result ValidationResult) ValidationResult {
+	evalCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	rs, err := oparego.New(
+		oparego.Query("data.ghmint.app"),
+		oparego.Module(filename, string(content)),
+		oparego.Input(map[string]any{}),
+		oparego.Capabilities(regocaps.SafeCapabilities()),
+	).Eval(evalCtx)
+	if err != nil {
+		result.Warnings = append(result.Warnings, Finding{
+			Line:    appLine,
+			Message: fmt.Sprintf("could not evaluate app for validation: %v", err),
+		})
+		return result
+	}
+	if len(rs) == 0 || len(rs[0].Expressions) == 0 {
+		result.Warnings = append(result.Warnings, Finding{
+			Line:    appLine,
+			Message: "app could not be statically evaluated (possibly input-dependent); registered-name validation skipped",
+		})
+		return result
+	}
+
+	name, ok := rs[0].Expressions[0].Value.(string)
+	if !ok {
+		result.Errors = append(result.Errors, Finding{
+			Line:    appLine,
+			Message: fmt.Sprintf("app must be a string, got %T", rs[0].Expressions[0].Value),
+		})
+		return result
+	}
+	if !slices.Contains(apps, name) {
+		result.Errors = append(result.Errors, Finding{
+			Line:    appLine,
+			Message: fmt.Sprintf("app %q is not a registered GitHub App (registered: %v)", name, apps),
+		})
+	}
 	return result
 }
 

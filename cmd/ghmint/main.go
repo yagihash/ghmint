@@ -19,6 +19,7 @@ import (
 	"github.com/yagihash/ghmint/pkg/logger/cloudlogging"
 	ghpolicystore "github.com/yagihash/ghmint/pkg/policystore/github"
 	kmssigner "github.com/yagihash/ghmint/pkg/signer/kms"
+	"github.com/yagihash/ghmint/pkg/verifier"
 	regoverifier "github.com/yagihash/ghmint/pkg/verifier/rego"
 )
 
@@ -42,31 +43,39 @@ func realMain() int {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	kmsSigner, err := kmssigner.NewKMSSigner(ctx, cfg.KMSKeyName())
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to initialize kms signer: %v\n", err)
-		return ExitError
-	}
-	defer func() {
-		if err := kmsSigner.Close(); err != nil {
-			log.WarnContext(ctx, "failed to close kms signer", "error", err)
+	clients := make(map[string]*installation.Client, len(cfg.Apps))
+	for _, a := range cfg.Apps {
+		signer, err := kmssigner.NewKMSSigner(ctx, a.KMSKeyName())
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "failed to initialize kms signer for app %q: %v\n", a.Name, err)
+			return ExitError
 		}
-	}()
+		defer func(name string) {
+			if err := signer.Close(); err != nil {
+				log.WarnContext(ctx, "failed to close kms signer", "app", name, "error", err)
+			}
+		}(a.Name)
+		clients[a.Name] = installation.New(a.AppID, signer)
+	}
 
-	installClient := installation.New(cfg.AppID, kmsSigner)
+	// The "default" App fetches policy files and handles webhooks; the other
+	// Apps are only used to issue tokens a policy selected with its "app" rule.
+	installClient := clients[verifier.DefaultApp]
+	delete(clients, verifier.DefaultApp)
 
 	ps := ghpolicystore.NewRepoPolicyStore(installClient)
 	pv := regoverifier.New(ps)
 
 	var wh *webhook.Handler
 	if cfg.WebhookSecret != "" {
-		wh = webhook.NewHandler(ctx, installClient, cfg.WebhookSecret, log)
+		wh = webhook.NewHandler(ctx, installClient, cfg.WebhookSecret, log, cfg.AppNames())
 	}
 
 	appCfg := app.Config{
 		Audience:       cfg.Audience,
 		AllowedIssuers: cfg.AllowedIssuers,
 		Installation:   installClient,
+		Apps:           clients,
 		Logger:         log,
 		Verifier:       pv,
 	}

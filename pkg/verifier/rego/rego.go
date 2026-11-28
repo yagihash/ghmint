@@ -25,10 +25,10 @@ func New(store policystore.PolicyStore) *RegoVerifier {
 	return &RegoVerifier{store: store}
 }
 
-func (v *RegoVerifier) Verify(ctx context.Context, claims map[string]any, scope, policy string) (map[string]string, []string, error) {
+func (v *RegoVerifier) Verify(ctx context.Context, claims map[string]any, scope, policy string) (verifier.Result, error) {
 	content, err := v.store.Fetch(ctx, scope, policy)
 	if err != nil {
-		return nil, nil, &verifier.DenialError{
+		return verifier.Result{}, &verifier.DenialError{
 			Reason:   fmt.Sprintf("fetch policy: %v", err),
 			Upstream: errors.Is(err, policystore.ErrUpstream),
 		}
@@ -46,66 +46,78 @@ func (v *RegoVerifier) Verify(ctx context.Context, claims map[string]any, scope,
 		oparego.Capabilities(regocaps.SafeCapabilities()),
 	).Eval(evalCtx)
 	if err != nil {
-		return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("evaluate policy: %v", err)}
+		return verifier.Result{}, &verifier.DenialError{Reason: fmt.Sprintf("evaluate policy: %v", err)}
 	}
 	if len(rs) == 0 || len(rs[0].Expressions) == 0 {
-		return nil, nil, &verifier.DenialError{Reason: "policy: data.ghmint is undefined (check package declaration)"}
+		return verifier.Result{}, &verifier.DenialError{Reason: "policy: data.ghmint is undefined (check package declaration)"}
 	}
 	p, ok := rs[0].Expressions[0].Value.(map[string]any)
 	if !ok {
-		return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("policy: data.ghmint has unexpected type %T", rs[0].Expressions[0].Value)}
+		return verifier.Result{}, &verifier.DenialError{Reason: fmt.Sprintf("policy: data.ghmint has unexpected type %T", rs[0].Expressions[0].Value)}
 	}
 
 	issuerVal, issuerExists := p["issuer"]
 	if !issuerExists {
-		return nil, nil, &verifier.DenialError{Reason: "policy: issuer is undefined"}
+		return verifier.Result{}, &verifier.DenialError{Reason: "policy: issuer is undefined"}
 	}
 	issuer, ok := issuerVal.(string)
 	if !ok {
-		return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("policy: issuer has unexpected type %T", issuerVal)}
+		return verifier.Result{}, &verifier.DenialError{Reason: fmt.Sprintf("policy: issuer has unexpected type %T", issuerVal)}
 	}
 	claimIss, _ := claims["iss"].(string)
 	if claimIss != issuer {
-		return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("policy: issuer mismatch (expected: %s, got: %s)", issuer, claimIss)}
+		return verifier.Result{}, &verifier.DenialError{Reason: fmt.Sprintf("policy: issuer mismatch (expected: %s, got: %s)", issuer, claimIss)}
 	}
 
 	allowVal, allowExists := p["allow"]
 	if !allowExists {
-		return nil, nil, &verifier.DenialError{Reason: "policy: allow is undefined"}
+		return verifier.Result{}, &verifier.DenialError{Reason: "policy: allow is undefined"}
 	}
 	allow, isBool := allowVal.(bool)
 	if !isBool {
-		return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("policy: allow has unexpected type %T", allowVal)}
+		return verifier.Result{}, &verifier.DenialError{Reason: fmt.Sprintf("policy: allow has unexpected type %T", allowVal)}
 	}
 	if !allow {
-		return nil, nil, &verifier.DenialError{Reason: "policy: allow is false"}
+		return verifier.Result{}, &verifier.DenialError{Reason: "policy: allow is false"}
 	}
 
 	permVal, permExists := p["permissions"]
 	if !permExists {
-		return nil, nil, &verifier.DenialError{Reason: "policy: permissions is undefined"}
+		return verifier.Result{}, &verifier.DenialError{Reason: "policy: permissions is undefined"}
 	}
 	permRaw, ok := permVal.(map[string]any)
 	if !ok {
-		return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("policy: permissions has unexpected type %T", permVal)}
+		return verifier.Result{}, &verifier.DenialError{Reason: fmt.Sprintf("policy: permissions has unexpected type %T", permVal)}
 	}
 	if len(permRaw) == 0 {
-		return nil, nil, &verifier.DenialError{Reason: "policy: permissions must not be empty"}
+		return verifier.Result{}, &verifier.DenialError{Reason: "policy: permissions must not be empty"}
 	}
 	permissions := make(map[string]string, len(permRaw))
 	for k, val := range permRaw {
 		s, ok := val.(string)
 		if !ok {
-			return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("policy: permissions value for %q is not string", k)}
+			return verifier.Result{}, &verifier.DenialError{Reason: fmt.Sprintf("policy: permissions value for %q is not string", k)}
 		}
 		permissions[k] = s
+	}
+
+	app := verifier.DefaultApp
+	if appVal, appExists := p["app"]; appExists {
+		s, ok := appVal.(string)
+		if !ok {
+			return verifier.Result{}, &verifier.DenialError{Reason: fmt.Sprintf("policy: app has unexpected type %T", appVal)}
+		}
+		if s == "" {
+			return verifier.Result{}, &verifier.DenialError{Reason: "policy: app must not be empty"}
+		}
+		app = s
 	}
 
 	scopeOwner, _, scopeHasRepo := strings.Cut(scope, "/")
 	repoVal, reposExists := p["repositories"]
 
 	if scopeHasRepo && reposExists {
-		return nil, nil, &verifier.DenialError{Reason: "policy: repositories must be undefined when scope is org/repo"}
+		return verifier.Result{}, &verifier.DenialError{Reason: "policy: repositories must be undefined when scope is org/repo"}
 	}
 
 	var repositories []string
@@ -114,7 +126,7 @@ func (v *RegoVerifier) Verify(ctx context.Context, claims map[string]any, scope,
 	} else {
 		rawRepos, ok := repoVal.([]any)
 		if !ok {
-			return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("policy: repositories has unexpected type %T", repoVal)}
+			return verifier.Result{}, &verifier.DenialError{Reason: fmt.Sprintf("policy: repositories has unexpected type %T", repoVal)}
 		}
 		if len(rawRepos) == 0 {
 			repositories = nil
@@ -123,25 +135,25 @@ func (v *RegoVerifier) Verify(ctx context.Context, claims map[string]any, scope,
 			for _, r := range rawRepos {
 				s, ok := r.(string)
 				if !ok {
-					return nil, nil, &verifier.DenialError{Reason: "policy: repositories contains non-string value"}
+					return verifier.Result{}, &verifier.DenialError{Reason: "policy: repositories contains non-string value"}
 				}
 				org, name, found := strings.Cut(s, "/")
 				if !found || org == "" || name == "" {
-					return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("policy: repository %q is not in owner/repo format", s)}
+					return verifier.Result{}, &verifier.DenialError{Reason: fmt.Sprintf("policy: repository %q is not in owner/repo format", s)}
 				}
 				// The issued token is always bound to the scope owner's installation,
 				// so every repository must belong to that owner. Reject mismatches
 				// instead of silently dropping the owner at issuance time. GitHub
 				// owner names are case-insensitive, so compare accordingly.
 				if !strings.EqualFold(org, scopeOwner) {
-					return nil, nil, &verifier.DenialError{Reason: fmt.Sprintf("policy: repository %q owner does not match scope owner %q", s, scopeOwner)}
+					return verifier.Result{}, &verifier.DenialError{Reason: fmt.Sprintf("policy: repository %q owner does not match scope owner %q", s, scopeOwner)}
 				}
 				repositories = append(repositories, s)
 			}
 		}
 	}
 
-	return permissions, repositories, nil
+	return verifier.Result{Permissions: permissions, Repositories: repositories, App: app}, nil
 }
 
 // defaultRepositories returns the default repository for a given scope when the policy omits repositories.

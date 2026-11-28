@@ -10,6 +10,7 @@ import (
 	minioidc "github.com/yagihash/ghmint/internal/oidc"
 	"github.com/yagihash/ghmint/pkg/installation"
 	"github.com/yagihash/ghmint/pkg/logger"
+	"github.com/yagihash/ghmint/pkg/verifier"
 )
 
 const (
@@ -33,24 +34,24 @@ type tokenIssuer interface {
 }
 
 type policyVerifier interface {
-	Verify(ctx context.Context, claims map[string]any, scope, policy string) (permissions map[string]string, repositories []string, err error)
+	Verify(ctx context.Context, claims map[string]any, scope, policy string) (verifier.Result, error)
 }
 
 type server struct {
 	logger              logger.Logger
 	oidcVerifier        oidcVerifier
-	tokenIssuer         tokenIssuer
+	tokenIssuers        map[string]tokenIssuer // keyed by App name
 	policyVerifier      policyVerifier
 	webhookHandler      http.Handler
 	maxRequestBodyBytes int64
 	httpServer          *http.Server
 }
 
-func newServer(log logger.Logger, ov oidcVerifier, ti tokenIssuer, pv policyVerifier, wh http.Handler, cfg Config) *server {
+func newServer(log logger.Logger, ov oidcVerifier, ti map[string]tokenIssuer, pv policyVerifier, wh http.Handler, cfg Config) *server {
 	s := &server{
 		logger:         log,
 		oidcVerifier:   ov,
-		tokenIssuer:    ti,
+		tokenIssuers:   ti,
 		policyVerifier: pv,
 		webhookHandler: wh,
 	}
