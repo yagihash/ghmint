@@ -1,6 +1,6 @@
 # ghmint
 
-[![CI](https://github.com/yagihash/ghmint/actions/workflows/go-test.yml/badge.svg)](https://github.com/yagihash/ghmint/actions/workflows/go-test.yml)
+[![CI](https://github.com/yagihash/ghmint/actions/workflows/ci.yml/badge.svg)](https://github.com/yagihash/ghmint/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Reference](https://pkg.go.dev/badge/github.com/yagihash/ghmint.svg)](https://pkg.go.dev/github.com/yagihash/ghmint)
 
