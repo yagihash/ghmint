@@ -27,8 +27,8 @@ var allowedBuiltins = map[string]bool{
 	"glob.match": true, "glob.quote_meta": true,
 	// Array / Set / Object
 	"array.concat": true, "array.slice": true, "array.reverse": true,
-	"intersection": true, "union": true, "difference": true,
-	"object.get": true, "object.keys": true, "object.values": true,
+	"intersection": true, "union": true,
+	"object.get": true, "object.keys": true,
 	"object.union": true, "object.union_n": true,
 	"object.remove": true, "object.filter": true, "object.subset": true,
 	// JSON / Encoding
@@ -45,7 +45,7 @@ var allowedBuiltins = map[string]bool{
 	"time.format": true, "time.date": true, "time.clock": true,
 	"time.weekday": true, "time.add_date": true, "time.diff": true,
 	// OPA internals required for evaluation
-	"assign": true, "unify": true, "equal": true, "internal.print": true,
+	"assign": true, "equal": true, "internal.print": true,
 	// `in` operator (x in xs → internal.member_2, k, v in obj → internal.member_3)
 	"internal.member_2": true, "internal.member_3": true,
 }
