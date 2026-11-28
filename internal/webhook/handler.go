@@ -24,17 +24,21 @@ type Handler struct {
 	ctx           context.Context
 	webhookSecret string
 	logger        logger.Logger
+	apps          []string
 	gh            *githubClient
 	wg            sync.WaitGroup
 }
 
 // NewHandler creates a Handler using the given installation.Client for GitHub App authentication.
 // ctx controls the lifetime of background goroutines spawned by the handler; cancel it on shutdown.
-func NewHandler(ctx context.Context, client *installation.Client, webhookSecret string, log logger.Logger) *Handler {
+// client is the "default" App; the webhook is received and answered by it only.
+// apps lists the registered App names that a policy's "app" rule may select.
+func NewHandler(ctx context.Context, client *installation.Client, webhookSecret string, log logger.Logger, apps []string) *Handler {
 	return &Handler{
 		ctx:           ctx,
 		webhookSecret: webhookSecret,
 		logger:        log,
+		apps:          apps,
 		gh:            newGithubClient(client),
 	}
 }
@@ -170,7 +174,7 @@ func (h *Handler) processValidation(ctx context.Context, log logger.Logger, payl
 			continue
 		}
 
-		vr := validateRegoFile(f, content, isOrgRepo)
+		vr := validateRegoFile(f, content, isOrgRepo, h.apps)
 		for _, e := range vr.Errors {
 			line := e.Line
 			if line == 0 {

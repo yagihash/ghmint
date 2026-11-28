@@ -80,7 +80,7 @@ func TestVerify_DangerousBuiltinsBlocked(t *testing.T) {
 			content := policy(basePolicy + "\n" + tt.snippet)
 			store := &staticPolicyStore{content: content}
 			v := rego.New(store)
-			_, _, err := v.Verify(context.Background(), claims(issuer), "org/repo", "policy")
+			_, err := v.Verify(context.Background(), claims(issuer), "org/repo", "policy")
 			assertDenialError(t, err)
 		})
 	}

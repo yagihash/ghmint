@@ -219,11 +219,27 @@ Check Run 名: `ghmint / policy validation`
 **設定**:
 - `STS_WEBHOOK_SECRET` 環境変数が未設定の場合、`/webhook` ルートは登録されない
 
+## 複数の GitHub App
+
+`STS_APP_ID` + `STS_KMS_*` は `default` という名前の App として扱う（後方互換）。追加の App は `STS_APPS=name1,name2` で名前を列挙し、名前ごとに `STS_APP_<NAME>_ID` と `STS_APP_<NAME>_KMS_{PROJECT_ID,LOCATION,KEYRING_ID,KEY_ID,KEY_VERSION}` を設定する（`<NAME>` は大文字化・`-` → `_`）。名前は `[a-z][a-z0-9-]{0,31}`、`default` は予約語。envconfig は prefix 無しのキーにフォールバックするため、追加 App の変数は `os.LookupEnv` で読む（`internal/config`）。
+
+- `main.go` が App ごとに KMS Signer と `installation.Client` を作る（キャッシュは App ごとに独立）
+- `default` の Client が policystore・webhook に使われ、`pkg/app` の `Config.Installation` になる。他は `Config.Apps`（`map[string]*installation.Client`、`default` は予約）
+- トークン発行は `Verifier` が返した `Result.App` の Client で行う。未登録なら `server.issue` が `issueDenied` にする（クライアントには理由を出さない）
+- webhook は `default` の App だけで受け、`app` ルールが登録済みの名前かも検証する（静的評価できない場合は warning）
+- `POST /token` のリクエスト/レスポンス形式は変えない
+
 ## Verifier インターフェース
 
 ```go
 type Verifier interface {
-    Verify(ctx context.Context, claims map[string]any, scope, policy string) (permissions map[string]string, repositories []string, err error)
+    Verify(ctx context.Context, claims map[string]any, scope, policy string) (verifier.Result, error)
+}
+
+type Result struct {
+    Permissions  map[string]string
+    Repositories []string
+    App          string // 省略時は verifier.DefaultApp ("default")
 }
 ```
 
@@ -265,6 +281,7 @@ type PolicyStore interface {
 | `data.ghmint.permissions` | **必須** | 発行する Installation Token に付与する権限。未定義ならエラー。 |
 | `data.ghmint.allow` | **必須** | 発行可否。`true` でなければ deny。`false` と undefined は区別してログに記録する（前者はポリシーが明示的に拒否、後者はポリシーの設定ミス）。 |
 | `data.ghmint.repositories` | 省略可 | アクセスを許可するリポジトリ一覧。省略時はデフォルト動作（後述）。 |
+| `data.ghmint.app` | 省略可 | トークンを発行する GitHub App の名前（文字列）。省略時は `default`。未登録の名前・文字列以外・空文字は deny（fail-closed、403）。 |
 
 ### issuer について
 

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -14,6 +15,9 @@ import (
 
 // Config holds the configuration for App.
 // Audience, Installation, Logger, and Verifier are required.
+// Installation is the "default" GitHub App (verifier.DefaultApp). Apps registers
+// additional named Apps that policies can select with the "app" rule; the name
+// "default" is reserved.
 // Timeout fields use built-in defaults when zero.
 // AllowedIssuers is optional: when non-empty, only tokens from listed OIDC issuers are accepted.
 // WebhookHandler is optional: when non-nil, POST /webhook is registered with this handler.
@@ -21,6 +25,7 @@ type Config struct {
 	Audience       string
 	AllowedIssuers []string
 	Installation   *installation.Client
+	Apps           map[string]*installation.Client
 	Logger         logger.Logger
 	Verifier       verifier.Verifier
 	WebhookHandler http.Handler
@@ -40,6 +45,14 @@ func (c Config) Validate() error {
 	}
 	if c.Installation == nil {
 		errs = append(errs, errors.New("Installation is required"))
+	}
+	for name, cl := range c.Apps {
+		if name == "" || name == verifier.DefaultApp {
+			errs = append(errs, fmt.Errorf("Apps: name %q is reserved or empty", name))
+		}
+		if cl == nil {
+			errs = append(errs, fmt.Errorf("Apps: client for %q is nil", name))
+		}
 	}
 	if c.Logger == nil {
 		errs = append(errs, errors.New("Logger is required"))
@@ -62,7 +75,11 @@ func New(cfg Config) (*App, error) {
 	}
 
 	ov := minioidc.New(cfg.Audience, cfg.AllowedIssuers)
-	srv := newServer(cfg.Logger, ov, cfg.Installation, cfg.Verifier, cfg.WebhookHandler, cfg)
+	issuers := map[string]tokenIssuer{verifier.DefaultApp: cfg.Installation}
+	for name, cl := range cfg.Apps {
+		issuers[name] = cl
+	}
+	srv := newServer(cfg.Logger, ov, issuers, cfg.Verifier, cfg.WebhookHandler, cfg)
 	return &App{srv: srv}, nil
 }
 

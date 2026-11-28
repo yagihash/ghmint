@@ -5,6 +5,9 @@ import (
 	"testing"
 )
 
+// testApps are the registered App names used by the validator tests.
+var testApps = []string{"default", "extra"}
+
 func TestValidateRegoFile(t *testing.T) {
 	validPolicy := `package ghmint
 
@@ -17,7 +20,7 @@ allow if {
 }`
 
 	t.Run("valid policy", func(t *testing.T) {
-		result := validateRegoFile("policy.rego", []byte(validPolicy), true)
+		result := validateRegoFile("policy.rego", []byte(validPolicy), true, testApps)
 		if len(result.Errors) != 0 {
 			t.Errorf("expected no errors, got %v", result.Errors)
 		}
@@ -25,7 +28,7 @@ allow if {
 
 	t.Run("disallowed builtin is reported with its name", func(t *testing.T) {
 		bad := validPolicy + "\n\nextra if http.send({\"method\": \"GET\", \"url\": \"https://example.com\"})\n"
-		result := validateRegoFile("policy.rego", []byte(bad), false)
+		result := validateRegoFile("policy.rego", []byte(bad), false, testApps)
 		if !containsError(result, `built-in function "http.send" is not allowed`) {
 			t.Errorf("expected disallowed builtin error, got %v", result.Errors)
 		}
@@ -36,7 +39,7 @@ allow if {
 
 	t.Run("in operator is allowed", func(t *testing.T) {
 		ok := validPolicy + "\n\nextra if input.ref in {\"refs/heads/main\"}\n"
-		result := validateRegoFile("policy.rego", []byte(ok), false)
+		result := validateRegoFile("policy.rego", []byte(ok), false, testApps)
 		if len(result.Errors) != 0 {
 			t.Errorf("expected no errors, got %v", result.Errors)
 		}
@@ -46,7 +49,7 @@ allow if {
 		bad := `package ghmint
 issuer := "x"
 permissions := {`
-		result := validateRegoFile("policy.rego", []byte(bad), false)
+		result := validateRegoFile("policy.rego", []byte(bad), false, testApps)
 		if len(result.Errors) == 0 {
 			t.Error("expected syntax error")
 		}
@@ -54,7 +57,7 @@ permissions := {`
 
 	t.Run("wrong package name", func(t *testing.T) {
 		bad := strings.ReplaceAll(validPolicy, "package ghmint", "package other")
-		result := validateRegoFile("policy.rego", []byte(bad), false)
+		result := validateRegoFile("policy.rego", []byte(bad), false, testApps)
 		if !containsError(result, "package must be") {
 			t.Errorf("expected package error, got %v", result.Errors)
 		}
@@ -62,7 +65,7 @@ permissions := {`
 
 	t.Run("missing issuer", func(t *testing.T) {
 		bad := strings.ReplaceAll(validPolicy, `issuer := "https://token.actions.githubusercontent.com"`, "")
-		result := validateRegoFile("policy.rego", []byte(bad), false)
+		result := validateRegoFile("policy.rego", []byte(bad), false, testApps)
 		if !containsError(result, `"issuer"`) {
 			t.Errorf("expected missing issuer error, got %v", result.Errors)
 		}
@@ -73,7 +76,7 @@ permissions := {`
 issuer := "https://token.actions.githubusercontent.com"
 permissions := {"contents": "read"}
 `
-		result := validateRegoFile("policy.rego", []byte(bad), false)
+		result := validateRegoFile("policy.rego", []byte(bad), false, testApps)
 		if !containsError(result, `"allow"`) {
 			t.Errorf("expected missing allow error, got %v", result.Errors)
 		}
@@ -84,7 +87,7 @@ permissions := {"contents": "read"}
 issuer := "https://token.actions.githubusercontent.com"
 allow if { true }
 `
-		result := validateRegoFile("policy.rego", []byte(bad), false)
+		result := validateRegoFile("policy.rego", []byte(bad), false, testApps)
 		if !containsError(result, `"permissions"`) {
 			t.Errorf("expected missing permissions error, got %v", result.Errors)
 		}
@@ -92,7 +95,7 @@ allow if { true }
 
 	t.Run("unknown permission key", func(t *testing.T) {
 		bad := strings.ReplaceAll(validPolicy, `{"contents": "read"}`, `{"nonexistent": "read"}`)
-		result := validateRegoFile("policy.rego", []byte(bad), false)
+		result := validateRegoFile("policy.rego", []byte(bad), false, testApps)
 		if !containsError(result, "nonexistent") {
 			t.Errorf("expected unknown permission error, got %v", result.Errors)
 		}
@@ -100,7 +103,7 @@ allow if { true }
 
 	t.Run("invalid permission value", func(t *testing.T) {
 		bad := strings.ReplaceAll(validPolicy, `{"contents": "read"}`, `{"contents": "invalid"}`)
-		result := validateRegoFile("policy.rego", []byte(bad), false)
+		result := validateRegoFile("policy.rego", []byte(bad), false, testApps)
 		if !containsError(result, "must be one of") {
 			t.Errorf("expected invalid permission value error, got %v", result.Errors)
 		}
@@ -108,7 +111,7 @@ allow if { true }
 
 	t.Run("repositories defined in org/repo scope repo", func(t *testing.T) {
 		bad := validPolicy + "\nrepositories := []"
-		result := validateRegoFile("policy.rego", []byte(bad), true)
+		result := validateRegoFile("policy.rego", []byte(bad), true, testApps)
 		if !containsError(result, "repositories must not be defined") {
 			t.Errorf("expected repositories error, got %v", result.Errors)
 		}
@@ -116,7 +119,7 @@ allow if { true }
 
 	t.Run("repositories defined in .github repo is allowed", func(t *testing.T) {
 		policy := validPolicy + "\nrepositories := []"
-		result := validateRegoFile("policy.rego", []byte(policy), false)
+		result := validateRegoFile("policy.rego", []byte(policy), false, testApps)
 		if containsError(result, "repositories") {
 			t.Errorf("expected no repositories error for .github repo, got %v", result.Errors)
 		}
@@ -124,7 +127,7 @@ allow if { true }
 
 	t.Run("multiple valid permissions", func(t *testing.T) {
 		policy := strings.ReplaceAll(validPolicy, `{"contents": "read"}`, `{"contents": "read", "issues": "write", "pull_requests": "read"}`)
-		result := validateRegoFile("policy.rego", []byte(policy), false)
+		result := validateRegoFile("policy.rego", []byte(policy), false, testApps)
 		if len(result.Errors) != 0 {
 			t.Errorf("expected no errors, got %v", result.Errors)
 		}
@@ -138,4 +141,41 @@ func containsError(r ValidationResult, substr string) bool {
 		}
 	}
 	return false
+}
+
+func TestValidateRegoFile_App(t *testing.T) {
+	base := `package ghmint
+
+issuer := "https://token.actions.githubusercontent.com"
+permissions := {"contents": "read"}
+allow if input.repository == "yagihash/app"
+`
+	tests := []struct {
+		name        string
+		extra       string
+		wantError   string // substring; empty means no error expected
+		wantWarning bool
+	}{
+		{"app omitted", "", "", false},
+		{"registered extra app", "app := \"extra\"\n", "", false},
+		{"explicit default app", "app := \"default\"\n", "", false},
+		{"unregistered app", "app := \"nope\"\n", `app "nope" is not a registered GitHub App`, false},
+		{"non-string app", "app := 1\n", "app must be a string", false},
+		{"input-dependent app is only warned about", "app := \"extra\" if input.repository == \"yagihash/app\"\napp := \"default\" if input.repository != \"yagihash/app\"\n", "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := validateRegoFile("policy.rego", []byte(base+tt.extra), true, testApps)
+			if tt.wantError == "" {
+				if len(result.Errors) != 0 {
+					t.Errorf("expected no errors, got %v", result.Errors)
+				}
+			} else if !containsError(result, tt.wantError) {
+				t.Errorf("expected error containing %q, got %v", tt.wantError, result.Errors)
+			}
+			if tt.wantWarning != (len(result.Warnings) > 0) {
+				t.Errorf("warnings = %v, wantWarning = %v", result.Warnings, tt.wantWarning)
+			}
+		})
+	}
 }

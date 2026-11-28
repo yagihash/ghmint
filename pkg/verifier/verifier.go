@@ -18,6 +18,21 @@ func (e *DenialError) Error() string {
 	return e.Reason
 }
 
+// DefaultApp is the name of the GitHub App used when a policy does not select
+// one with the "app" rule. It is also the App that fetches policy files and
+// receives webhooks.
+const DefaultApp = "default"
+
+// Result is the outcome of a successful policy evaluation.
+type Result struct {
+	Permissions  map[string]string
+	Repositories []string
+	// App is the name of the GitHub App the token must be issued from.
+	// It is DefaultApp when the policy omits the "app" rule. Whether the name
+	// is actually registered is checked by the caller.
+	App string
+}
+
 type Verifier interface {
-	Verify(ctx context.Context, claims map[string]any, scope, policy string) (permissions map[string]string, repositories []string, err error)
+	Verify(ctx context.Context, claims map[string]any, scope, policy string) (Result, error)
 }

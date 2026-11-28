@@ -139,8 +139,38 @@ All environment variables use the `STS_` prefix.
 | `STS_KMS_KEY_VERSION` | ✓ | — | KMS key version (integer) |
 | `STS_ALLOWED_ISSUERS` | | `https://token.actions.githubusercontent.com` | Comma-separated list of accepted OIDC issuer URLs |
 | `STS_WEBHOOK_SECRET` | | — | GitHub webhook secret; enables `POST /webhook` for Rego policy validation on PRs |
+| `STS_APPS` | | — | Comma-separated names of additional GitHub Apps (see [Multiple GitHub Apps](#multiple-github-apps)) |
 | `STS_PORT` | | `8080` | HTTP listen port |
 | `STS_DEBUG` | | `false` | Enable debug logging |
+
+### Multiple GitHub Apps
+
+`STS_APP_ID` and `STS_KMS_*` define the App named `default`. It fetches policy files, receives webhooks, and issues tokens for policies that do not select an App. Existing deployments keep working without any change.
+
+To register more Apps, list their names in `STS_APPS` and set one group of variables per name. A name must match `[a-z][a-z0-9-]{0,31}`, and `default` is reserved. In the variable names the name is upper-cased and `-` becomes `_`:
+
+| Variable | Required | Description |
+|---|---|---|
+| `STS_APP_<NAME>_ID` | ✓ | GitHub App ID |
+| `STS_APP_<NAME>_KMS_PROJECT_ID` | ✓ | Google Cloud project ID containing the KMS key |
+| `STS_APP_<NAME>_KMS_LOCATION` | ✓ | KMS key location |
+| `STS_APP_<NAME>_KMS_KEYRING_ID` | ✓ | KMS key ring name |
+| `STS_APP_<NAME>_KMS_KEY_ID` | ✓ | KMS key name |
+| `STS_APP_<NAME>_KMS_KEY_VERSION` | ✓ | KMS key version (integer) |
+
+For example, to add an App named `release-bot`:
+
+```sh
+STS_APPS=release-bot
+STS_APP_RELEASE_BOT_ID=789012
+STS_APP_RELEASE_BOT_KMS_PROJECT_ID=<PROJECT>
+STS_APP_RELEASE_BOT_KMS_LOCATION=global
+STS_APP_RELEASE_BOT_KMS_KEYRING_ID=<KEYRING>
+STS_APP_RELEASE_BOT_KMS_KEY_ID=<KEY>
+STS_APP_RELEASE_BOT_KMS_KEY_VERSION=1
+```
+
+The service refuses to start if a listed App has a missing variable, an invalid or duplicate name, or a non-integer key version. Each App must be installed on the owners (`scope`) that policies request tokens for.
 
 ## Writing policies
 
@@ -160,6 +190,7 @@ package ghmint
 | `allow` | `boolean` | Grant the token when `true`. `false` and `undefined` both deny; the latter is logged as a misconfiguration. |
 | `permissions` | `object` | GitHub App permissions to grant (e.g. `{"contents": "read"}`). Keys and values must be valid GitHub App permission names. |
 | `repositories` | `array` (optional) | Repositories to scope the token to. Omit to use the default (see below). Must be omitted when `scope` is `org/repo`. |
+| `app` | `string` (optional) | Name of the GitHub App to issue the token from (see [Multiple GitHub Apps](#multiple-github-apps)). Omit to use `default`. |
 
 **`repositories` defaults:**
 
@@ -168,6 +199,22 @@ package ghmint
 | Omitted (`undefined`) | The repository inferred from `scope` (for `org/repo`) or `org/.github` (for `org`) |
 | `[]` (empty array) | All repositories the App has access to |
 | `["org/a", "org/b"]` | Exactly the listed repositories |
+
+**`app`:**
+
+The token is issued by the selected App, from its installation on the owner in `scope`. `permissions` and `repositories` behave exactly as without `app`. Policy files themselves are always fetched with the `default` App.
+
+| Definition | Behaviour |
+|---|---|
+| Omitted | Issued by the `default` App |
+| Name of a registered App | Issued by that App |
+| Unregistered name | No token is issued. The client gets `403` (like any other policy failure); the reason is only in the server log. The webhook check also reports it on the pull request. |
+
+```rego
+app := "release-bot"
+```
+
+> **Note:** any policy can name any registered App. ghmint does not restrict which policies may use which App, so register an App only if every policy author whose repository the App is installed on may use it.
 
 **Example — GitHub Actions caller:**
 

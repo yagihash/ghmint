@@ -30,20 +30,30 @@ func (m *mockOIDCVerifier) Verify(_ context.Context, _ string) (minioidc.Claims,
 type mockTokenIssuer struct {
 	result installation.IssueResult
 	err    error
+	calls  int
 }
 
 func (m *mockTokenIssuer) IssueToken(_ context.Context, _ string, _ map[string]string, _ []string) (installation.IssueResult, error) {
+	m.calls++
 	return m.result, m.err
 }
 
 type mockPolicyVerifier struct {
 	permissions map[string]string
 	repos       []string
+	app         string // empty means the policy omitted "app" (-> default)
 	err         error
 }
 
-func (m *mockPolicyVerifier) Verify(_ context.Context, _ map[string]any, _, _ string) (map[string]string, []string, error) {
-	return m.permissions, m.repos, m.err
+func (m *mockPolicyVerifier) Verify(_ context.Context, _ map[string]any, _, _ string) (verifier.Result, error) {
+	if m.err != nil {
+		return verifier.Result{}, m.err
+	}
+	app := m.app
+	if app == "" {
+		app = verifier.DefaultApp
+	}
+	return verifier.Result{Permissions: m.permissions, Repositories: m.repos, App: app}, nil
 }
 
 type testLog struct{}
@@ -57,7 +67,11 @@ func (l testLog) With(_ ...any) logger.Logger                      { return l }
 // --- helper ---
 
 func newTestServer(ov oidcVerifier, ti tokenIssuer, pv policyVerifier) *server {
-	return newServer(testLog{}, ov, ti, pv, nil, Config{})
+	return newTestServerApps(ov, map[string]tokenIssuer{verifier.DefaultApp: ti}, pv)
+}
+
+func newTestServerApps(ov oidcVerifier, issuers map[string]tokenIssuer, pv policyVerifier) *server {
+	return newServer(testLog{}, ov, issuers, pv, nil, Config{})
 }
 
 // --- tests ---
@@ -255,5 +269,131 @@ func assertCode(t *testing.T, rr *httptest.ResponseRecorder, want string) {
 	}
 	if body.Code != want {
 		t.Errorf("expected code=%q, got %q", want, body.Code)
+	}
+}
+
+// --- multiple GitHub Apps ---
+
+func TestHandleToken_AppSelection(t *testing.T) {
+	ov := &mockOIDCVerifier{claims: minioidc.Claims{Raw: map[string]any{"iss": "https://example.com"}}}
+	newIssuers := func() (*mockTokenIssuer, *mockTokenIssuer, map[string]tokenIssuer) {
+		def := &mockTokenIssuer{result: installation.IssueResult{Token: "ghs_default", ExpiresAt: time.Now().Add(time.Hour)}}
+		extra := &mockTokenIssuer{result: installation.IssueResult{Token: "ghs_extra", ExpiresAt: time.Now().Add(time.Hour)}}
+		return def, extra, map[string]tokenIssuer{verifier.DefaultApp: def, "extra": extra}
+	}
+
+	tests := []struct {
+		name      string
+		app       string
+		wantCode  int
+		wantToken string
+	}{
+		{"app omitted uses default", "", http.StatusOK, "ghs_default"},
+		{"explicit default", "default", http.StatusOK, "ghs_default"},
+		{"registered app", "extra", http.StatusOK, "ghs_extra"},
+		{"unregistered app is denied", "nope", http.StatusForbidden, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			def, extra, issuers := newIssuers()
+			pv := &mockPolicyVerifier{permissions: map[string]string{"contents": "read"}, repos: []string{"org/repo"}, app: tt.app}
+			srv := newTestServerApps(ov, issuers, pv)
+			req := httptest.NewRequest(http.MethodPost, "/token", tokenRequestBody("org/repo", "pol"))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer dummy-token")
+			rr := httptest.NewRecorder()
+			srv.handleToken(rr, req)
+
+			if rr.Code != tt.wantCode {
+				t.Fatalf("expected %d, got %d: %s", tt.wantCode, rr.Code, rr.Body)
+			}
+			if tt.wantCode != http.StatusOK {
+				assertCode(t, rr, "FORBIDDEN")
+				if strings.Contains(rr.Body.String(), tt.app) {
+					t.Errorf("response must not disclose the app name: %s", rr.Body)
+				}
+				if def.calls != 0 || extra.calls != 0 {
+					t.Errorf("no token must be issued for an unregistered app (default=%d extra=%d)", def.calls, extra.calls)
+				}
+				return
+			}
+			var resp struct {
+				Token string `json:"token"`
+			}
+			if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+				t.Fatal(err)
+			}
+			if resp.Token != tt.wantToken {
+				t.Errorf("expected token %q, got %q", tt.wantToken, resp.Token)
+			}
+			wantDef, wantExtra := 0, 0
+			if tt.wantToken == "ghs_default" {
+				wantDef = 1
+			} else {
+				wantExtra = 1
+			}
+			if def.calls != wantDef || extra.calls != wantExtra {
+				t.Errorf("issuer calls: default=%d extra=%d, want %d/%d", def.calls, extra.calls, wantDef, wantExtra)
+			}
+		})
+	}
+}
+
+func TestHandleTokenRFC7523_UnregisteredApp(t *testing.T) {
+	srv := newTestServer(
+		&mockOIDCVerifier{claims: minioidc.Claims{Raw: map[string]any{"sub": "s"}}},
+		&mockTokenIssuer{},
+		&mockPolicyVerifier{permissions: map[string]string{"contents": "read"}, app: "nope"},
+	)
+	rr := httptest.NewRecorder()
+	srv.handleToken(rr, formReq(validForm()))
+	if rr.Code != http.StatusBadRequest || oauthErr(t, rr) != "invalid_grant" {
+		t.Errorf("expected 400 invalid_grant, got %d: %s", rr.Code, rr.Body)
+	}
+}
+
+func TestConfigValidate_Apps(t *testing.T) {
+	base := Config{Audience: "a", Installation: &installation.Client{}, Logger: testLog{}, Verifier: &mockPolicyVerifierShim{}}
+	if err := base.Validate(); err != nil {
+		t.Fatalf("base config must be valid: %v", err)
+	}
+	cfg := base
+	cfg.Apps = map[string]*installation.Client{"extra": {}}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("extra app must be valid: %v", err)
+	}
+	cfg.Apps = map[string]*installation.Client{verifier.DefaultApp: {}}
+	if err := cfg.Validate(); err == nil {
+		t.Error("the name \"default\" must be reserved")
+	}
+	cfg.Apps = map[string]*installation.Client{"extra": nil}
+	if err := cfg.Validate(); err == nil {
+		t.Error("nil client must be rejected")
+	}
+}
+
+type mockPolicyVerifierShim struct{}
+
+func (*mockPolicyVerifierShim) Verify(context.Context, map[string]any, string, string) (verifier.Result, error) {
+	return verifier.Result{}, nil
+}
+
+type emptyAppVerifier struct{}
+
+func (emptyAppVerifier) Verify(context.Context, map[string]any, string, string) (verifier.Result, error) {
+	return verifier.Result{Permissions: map[string]string{"contents": "read"}}, nil
+}
+
+// A custom Verifier that leaves Result.App empty must be treated as "default".
+func TestHandleToken_EmptyAppMeansDefault(t *testing.T) {
+	ti := &mockTokenIssuer{result: installation.IssueResult{Token: "ghs_default", ExpiresAt: time.Now().Add(time.Hour)}}
+	srv := newTestServer(&mockOIDCVerifier{claims: minioidc.Claims{Raw: map[string]any{}}}, ti, emptyAppVerifier{})
+	req := httptest.NewRequest(http.MethodPost, "/token", tokenRequestBody("org/repo", "pol"))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer dummy-token")
+	rr := httptest.NewRecorder()
+	srv.handleToken(rr, req)
+	if rr.Code != http.StatusOK || ti.calls != 1 {
+		t.Errorf("expected 200 via default app, got %d (calls=%d)", rr.Code, ti.calls)
 	}
 }
